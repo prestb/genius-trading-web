@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
                   symbol,
                   interval,
                   timezone: "UTC",
-                  outputsize: "100",
+                  outputsize: "250",
                   apikey: apiKey,
             });
 

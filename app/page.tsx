@@ -42,6 +42,9 @@ type MarketResponse = {
   count: number;
   candles: Candle[];
   retrievedAt: string;
+  latestCandleAt?: string;
+  candleAgeSeconds?: number;
+  isFresh?: boolean;
   error?: string;
 };
 
@@ -125,6 +128,7 @@ export default function Home() {
 
       if (
         !response.ok ||
+        data.isFresh !== true ||
         !Array.isArray(data.candles) ||
         data.candles.length === 0
       ) {
@@ -164,6 +168,7 @@ export default function Home() {
 
             if (
               !response.ok ||
+              data.isFresh !== true ||
               !Array.isArray(data.candles) ||
               data.candles.length === 0
             ) {
@@ -253,6 +258,18 @@ export default function Home() {
         if (!response.ok) {
           throw new Error(data.error || "Unable to load market data.");
         }
+
+        if (data.isFresh !== true) {
+            const age = Number.isFinite(data.candleAgeSeconds)
+                ? ` Latest candle age: ${data.candleAgeSeconds} seconds.`
+                    : "";
+                      throw new Error(
+                          `Market data is stale or its freshness could not be verified.${age}`
+                            );
+                            }
+
+                            
+        
 
         if (
           !Array.isArray(data.candles) ||
@@ -601,7 +618,7 @@ export default function Home() {
             <div className="section-heading">
               <div>
                 <h2>Technical indicators</h2>
-                <p>Calculated from the selected instrument's market candles.</p>
+                <p>Calculated from the selected instrument&apos;s market candles.</p>
               </div>
             </div>
 
