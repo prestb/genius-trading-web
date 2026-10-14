@@ -86,6 +86,12 @@ export default function Home() {
   const [marketError, setMarketError] = useState("");
   const [retrievedAt, setRetrievedAt] = useState("");
 
+  const [marketFreshness, setMarketFreshness] = useState<{
+    latestCandleAt?: string;
+    candleAgeSeconds?: number;
+    isFresh?: boolean;
+  } | null>(null);
+
 
   const [watchPrices, setWatchPrices] = useState<
     Record<string, { price: number; previous: number | null }>
@@ -116,33 +122,7 @@ export default function Home() {
   );
 
 
-  async function fetchLatestPrice(item: string): Promise<number | null> {
-    try {
-      const params = new URLSearchParams({
-        symbol: item,
-        interval: "15min",
-      });
 
-      const response = await fetch(`/api/market?${params.toString()}`);
-      const data = await response.json();
-
-      if (
-        !response.ok ||
-        data.isFresh !== true ||
-        !Array.isArray(data.candles) ||
-        data.candles.length === 0
-      ) {
-        return null;
-      }
-
-      const latest = data.candles[data.candles.length - 1];
-      const price = Number(latest.close);
-
-      return Number.isFinite(price) ? price : null;
-    } catch {
-      return null;
-    }
-  }
 
 
   useEffect(() => {
@@ -260,16 +240,16 @@ export default function Home() {
         }
 
         if (data.isFresh !== true) {
-            const age = Number.isFinite(data.candleAgeSeconds)
-                ? ` Latest candle age: ${data.candleAgeSeconds} seconds.`
-                    : "";
-                      throw new Error(
-                          `Market data is stale or its freshness could not be verified.${age}`
-                            );
-                            }
+          const age = Number.isFinite(data.candleAgeSeconds)
+            ? ` Latest candle age: ${data.candleAgeSeconds} seconds.`
+            : "";
+          throw new Error(
+            `Market data is stale or its freshness could not be verified.${age}`
+          );
+        }
 
-                            
-        
+
+
 
         if (
           !Array.isArray(data.candles) ||
@@ -286,14 +266,23 @@ export default function Home() {
         if (!cancelled) {
           setCandles(data.candles);
           setRetrievedAt(data.retrievedAt || "");
+
+          setMarketFreshness({
+            latestCandleAt: data.latestCandleAt,
+            candleAgeSeconds: data.candleAgeSeconds,
+            isFresh: data.isFresh,
+          });
+
           setNotice(
             `${data.source || "Market provider"} returned ${data.candles.length} candles for ${symbol}.`
           );
+
         }
       } catch (error) {
         if (!cancelled && !(error instanceof Error && error.name === "AbortError")) {
           setCandles([]);
           setRetrievedAt("");
+          setMarketFreshness(null);
           setMarketError(
             error instanceof Error
               ? error.message
@@ -470,7 +459,35 @@ export default function Home() {
                     ? "Twelve Data connected"
                     : "Waiting for data"}
             </div>
+            <button
+              className="icon-button"
+              aria-label="Market candle freshness details"
+              title="Market candle freshness details"
+              onClick={() => {
+                const age =
+                  typeof marketFreshness?.candleAgeSeconds === "number"
+                    ? `${Math.floor(marketFreshness.candleAgeSeconds / 60)} minutes ${Math.floor(
+                      marketFreshness.candleAgeSeconds % 60
+                    )} seconds`
+                    : "Unavailable";
 
+                const status =
+                  marketFreshness?.isFresh === true
+                    ? "Fresh"
+                    : marketFreshness?.isFresh === false
+                      ? "Stale"
+                      : "Unknown";
+
+                setNotice(
+                  `Latest candle: ${marketFreshness?.latestCandleAt || "Unavailable"}. Candle age: ${age}. Status: ${status}. Last API retrieval: ${retrievedAt
+                    ? new Date(retrievedAt).toLocaleString()
+                    : "Unavailable"
+                  }.`
+                );
+              }}
+            >
+              <Clock3 size={18} />
+            </button>
             <button
               className="icon-button"
               aria-label="Help"
@@ -511,23 +528,6 @@ export default function Home() {
               </p>
             </div>
 
-            <button
-              className="date-button"
-              onClick={() =>
-                setNotice(
-                  retrievedAt
-                    ? `Last API retrieval: ${new Date(retrievedAt).toLocaleString()}`
-                    : "Market retrieval time is not available yet."
-                )
-              }
-            >
-              <Clock3 size={15} />
-              <span>
-                {retrievedAt
-                  ? `Retrieved ${new Date(retrievedAt).toLocaleTimeString()}`
-                  : "Waiting for market data"}
-              </span>
-            </button>
           </section>
 
           <div className="demo-alert">
@@ -1079,7 +1079,7 @@ export default function Home() {
               </div>
 
               {visibleSymbols.map((item, i) => {
-                const isCurrentSymbol = item === symbol;
+                
                 const isWatched = watchlist.includes(item);
 
                 return (
@@ -1164,7 +1164,7 @@ export default function Home() {
             </span>
           </footer>
         </div>
-      </section>
-    </main>
+      </section >
+    </main >
   );
 }

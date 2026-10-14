@@ -1,4 +1,11 @@
 
+
+import {
+      getCandleAgeSeconds,
+      isCandleFresh,
+      isValidCandle,
+} from "@/lib/market-validation";
+
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -105,25 +112,7 @@ export async function GET(request: NextRequest) {
                         low: Number(item.low),
                         close: Number(item.close),
                   }))
-                  .filter(
-                        (candle: {
-                              time: string;
-                              open: number;
-                              high: number;
-                              low: number;
-                              close: number;
-                        }) =>
-                              candle.time.length > 0 &&
-                              [
-                                    candle.open,
-                                    candle.high,
-                                    candle.low,
-                                    candle.close,
-                              ].every(Number.isFinite) &&
-                              candle.high >= candle.low &&
-                              candle.high >= Math.max(candle.open, candle.close) &&
-                              candle.low <= Math.min(candle.open, candle.close)
-                  )
+                  .filter(isValidCandle)
                   .reverse();
 
             if (candles.length === 0) {
@@ -132,6 +121,7 @@ export async function GET(request: NextRequest) {
                         { status: 502 }
                   );
             }
+
 
             const latestCandle = candles[candles.length - 1];
             const latestCandleTime = Date.parse(latestCandle.time);
@@ -143,24 +133,26 @@ export async function GET(request: NextRequest) {
                   );
             }
 
-            const ageMilliseconds = Date.now() - latestCandleTime;
+            const candleAgeSeconds = getCandleAgeSeconds(latestCandle.time);
 
-            if (ageMilliseconds < -60_000) {
+            if (candleAgeSeconds === null) {
                   return NextResponse.json(
-                              { error: "The latest candle timestamp is unexpectedly in the future." },
-                                          { status: 502 }
-                                                );
-                                                }
+                        {
+                              error:
+                                    "The latest candle timestamp is unexpectedly in the future.",
+                        },
+                        { status: 502 }
+                  );
+            }
 
-                                                const candleAgeSeconds = Math.max(
-                                                      0,
-                                                            Math.floor(ageMilliseconds / 1000)
-                                                            );
+      
 
-            const maxCandleAgeSeconds =
-                  intervalSeconds[interval] * freshnessMultiplier;
+            const isFresh = isCandleFresh(
+                  candleAgeSeconds,
+                  intervalSeconds[interval],
+                  freshnessMultiplier,
+            );
 
-            const isFresh = candleAgeSeconds <= maxCandleAgeSeconds;
 
             return NextResponse.json(
                   {
