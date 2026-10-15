@@ -19,6 +19,7 @@ const allowedIntervals = new Set([
       "1h",
       "4h",
       "1day",
+      "1week",
 ]);
 
 const intervalSeconds: Record<string, number> = {
@@ -29,6 +30,7 @@ const intervalSeconds: Record<string, number> = {
       "1h": 3600,
       "4h": 14400,
       "1day": 86400,
+      "1week": 604800,
 };
 
 const freshnessMultiplier = 2;

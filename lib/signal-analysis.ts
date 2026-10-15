@@ -3,6 +3,7 @@ import type { MarketRegimeAnalysis } from "./market-regime";
 import type { IndicatorCandle, TechnicalIndicators } from "./indicators";
 import type { TrendAnalysis } from "./trend-analysis";
 import type { PriceActionAnalysis } from "./price-action";
+import { getRequiredHigherTimeframes, type MultiTimeframeAnalysis } from "./multi-timeframe";
 
 export const SIGNAL_ENGINE_VERSION = "1.0.0" as const;
 
@@ -39,6 +40,7 @@ export type SignalAnalysisInput = {
     riskPercent?: number;
     regime?: MarketRegimeAnalysis;
     priceAction?: PriceActionAnalysis;
+    multiTimeframe?: MultiTimeframeAnalysis;
 };
 
 export type SignalAnalysis = {
@@ -581,6 +583,58 @@ export function analyzeSignal(
         }
     }
 
+    if (input.multiTimeframe) {
+        const mtf = input.multiTimeframe;
+        const expectedDirection: CandidateDirection = bullish ? "Bullish" : "Bearish";
+        const expectedIntervals = getRequiredHigherTimeframes(input.interval);
+        const identityMatches =
+            mtf.symbol === input.symbol &&
+            mtf.selectedInterval === input.interval &&
+            expectedIntervals.length > 0 &&
+            Array.isArray(mtf.requiredIntervals) &&
+            mtf.requiredIntervals.length === expectedIntervals.length &&
+            mtf.requiredIntervals.every((interval, index) => interval === expectedIntervals[index]) &&
+            Array.isArray(mtf.frames) &&
+            mtf.frames.length === expectedIntervals.length &&
+            mtf.frames.every((frame, index) => frame.interval === expectedIntervals[index]);
+
+        const frameConfirmationsMatch =
+            identityMatches &&
+            mtf.frames.every(
+                (frame) =>
+                    frame.status === "Confirmed" &&
+                    frame.direction === expectedDirection &&
+                    typeof frame.latestCandleAt === "string" &&
+                    Number.isFinite(Date.parse(frame.latestCandleAt)),
+            );
+
+        if (
+            !identityMatches ||
+            mtf.status !== "Confirmed" ||
+            mtf.direction !== expectedDirection ||
+            !frameConfirmationsMatch
+        ) {
+            const code = !identityMatches
+                ? "MULTI_TIMEFRAME_IDENTITY_MISMATCH"
+                : mtf.status === "Conflict"
+                    ? "MULTI_TIMEFRAME_CONFLICT"
+                    : mtf.status === "Unavailable"
+                        ? "MULTI_TIMEFRAME_UNAVAILABLE"
+                        : mtf.status === "Blocked"
+                            ? "MULTI_TIMEFRAME_BLOCKED"
+                            : "MULTI_TIMEFRAME_DIRECTION_MISMATCH";
+            const message = !identityMatches
+                ? "Higher-timeframe analysis does not match the current symbol and selected timeframe."
+                : mtf.summary || "Higher-timeframe confirmation is not valid for this setup.";
+            return waitResult(
+                input,
+                `No signal: ${message}`,
+                [{ code, message, passed: false }],
+                "Moderate",
+            );
+        }
+    }
+
     const direction: Exclude<SignalDirection, "WAIT"> =
         bullish ? "BUY" : "SELL";
 
@@ -621,6 +675,14 @@ export function analyzeSignal(
     }
 
     matchedChecks.push(...priceActionReasons);
+
+    if (input.multiTimeframe) {
+        matchedChecks.push({
+            code: "MULTI_TIMEFRAME_CONFIRMATION",
+            message: input.multiTimeframe.summary,
+            passed: true,
+        });
+    }
 
     const riskPercent = input.riskPercent ?? DEFAULT_RISK_PERCENT;
 
@@ -712,6 +774,11 @@ export function analyzeSignal(
             ...(input.regime
                 ? [
                     "Reassess if the market regime changes, becomes non-actionable, or conflicts with the trade direction.",
+                ]
+                : []),
+            ...(input.multiTimeframe
+                ? [
+                    "Reassess if any required higher timeframe becomes stale, neutral, or conflicts with the trade direction.",
                 ]
                 : []),
             "The estimated stop-loss is a risk reference, not a guaranteed fill price.",
