@@ -1,6 +1,6 @@
 Genius — Trading Intelligence Roadmap
-Last reviewed: 14 October 2026
-Current milestone: Multi-timeframe confirmation is implemented; the historical backtesting engine and research page are now prepared for verification.
+Last reviewed: 15 October 2026
+Current milestone: Multi-timeframe confirmation and historical backtesting are implemented. Chronological out-of-sample validation and benchmark reporting are prepared for verification on a feature branch.
 Genius is a personal-use, multi-market trading research dashboard built with Next.js and TypeScript. It helps inspect market data and evaluate analysis before a trading decision. It does not place trades or guarantee outcomes.
 Current status
 The user confirmed that the clock/status control opens successfully and displays the latest candle time, candle age, freshness result, and last API retrieval time. The previous Invalid Hook Call error in that status area is no longer appearing.
@@ -137,3 +137,12 @@ Backtesting implementation notes
 - If a stop is crossed by a gap at the next candle open, the simulation exits at the opening price before applying spread/slippage, instead of assuming a fill at the stop level. If stop and target are both touched intrabar, stop-loss-first remains the conservative assumption.
 - `Expectancy (R)` is mean net trade P/L divided by each trade's initial stop-distance risk amount. Costs may make realized loss exceed the planned risk.
 - This remains a bar-based simulation. It does not model order-book depth, variable spreads, swaps/funding, broker-specific contract sizing, partial fills, or all intrabar price paths. Do not interpret passing software tests as evidence of strategy profitability.
+
+
+## Phase 5: out-of-sample validation
+
+The Backtesting Lab can optionally run a chronological 70/30 split over the scored history. Earlier candles are retained only as indicator and higher-timeframe warm-up; the scored in-sample and out-of-sample windows use precise candle timestamps and do not overlap. Each period is simulated independently from the configured initial balance.
+
+The holdout report compares net results, return, trade count, win rate, profit factor, expectancy in R, and maximum drawdown. It also shows a long-only price-only buy-and-hold reference and a zero-return no-trade baseline over the holdout window. This reference excludes transaction costs, financing, dividends, and instrument-specific contract sizing and should not be treated as a perfectly matched benchmark.
+
+**Research discipline:** do not tune strategy rules or configuration after inspecting the out-of-sample results and then continue to describe that same period as an untouched holdout. If the holdout informs a strategy change, reserve a new later period for independent validation. Results are historical simulations, not forecasts or guarantees of profitability.
