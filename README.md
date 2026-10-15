@@ -1,6 +1,6 @@
 Genius — Trading Intelligence Roadmap
 Last reviewed: 14 October 2026
-Current milestone: Live market data and baseline technical analysis are working.
+Current milestone: Multi-timeframe confirmation is implemented; the historical backtesting engine and research page are now prepared for verification.
 Genius is a personal-use, multi-market trading research dashboard built with Next.js and TypeScript. It helps inspect market data and evaluate analysis before a trading decision. It does not place trades or guarantee outcomes.
 Current status
 The user confirmed that the clock/status control opens successfully and displays the latest candle time, candle age, freshness result, and last API retrieval time. The previous Invalid Hook Call error in that status area is no longer appearing.
@@ -50,17 +50,19 @@ Show signal rationale, invalidation conditions, data timestamp, and the differen
 Keep AI assistance optional and subordinate to validated data, deterministic checks, and explicit risk controls.
 Phase 3 — Historical data and backtesting
 [ ]
-Design historical candle retrieval/storage with symbol, interval, provider, and timestamp provenance.
+Verify the historical backtesting API against the configured Twelve Data plan and provider rate limits.
+[x]
+Build a deterministic backtesting engine that evaluates signals at candle close and enters at the next candle open.
+[x]
+Include configurable spread, slippage, per-side fees, ATR-based stops/targets, max holding period, and conservative stop-first handling for ambiguous candles.
+[x]
+Report sample size, win rate, expectancy, profit factor, marked-to-market maximum drawdown, average win/loss, and exposure.
+[x]
+Exclude incomplete higher-timeframe candles at each simulated decision time and block trades without aligned higher-timeframe confirmation.
 [ ]
-Build a backtesting engine using only information available at each simulated decision time.
+Add unit/property tests for no-look-ahead behavior, fills, metrics, and cost assumptions; run the full project checks.
 [ ]
-Include realistic fees, spread/slippage assumptions, stop/target handling, and unfilled/ambiguous candle cases.
-[ ]
-Report sample size, win rate, expectancy, profit factor, maximum drawdown, and risk-adjusted results.
-[ ]
-Prevent look-ahead bias and data leakage; compare results with a simple baseline.
-[ ]
-Add out-of-sample evaluation and paper/forward testing before treating any strategy as usable.
+Add out-of-sample evaluation, benchmark comparison, and paper/forward testing before treating any strategy as usable.
 Phase 4 — Persistence and user settings
 [ ]
 Select and configure a database and server-side access layer.
@@ -84,7 +86,7 @@ Configure deployment and environment variables; verify health, build, and runtim
 [ ]
 Document known limitations and the fact that the app does not execute trades.
 Recommended next task
-Complete Phase 1 verification and tests before building the signal engine. First run the project checks in Codespaces, then add focused tests for the market API and freshness/validation rules. This establishes a trustworthy base for any later trading signals.
+Run the new backtesting suite, TypeScript, lint, and production build on a feature branch. Verify provider quotas and inspect several trades manually before relying on performance metrics. Then add out-of-sample splits and a buy-and-hold/flat baseline; backtest performance is research evidence, not a forecast.
 Run locally
 Requirements: Node.js 20.9+ and npm.
 npm install
@@ -117,3 +119,21 @@ The market endpoint accepts `1week` and applies a freshness threshold of two wee
 
 Dedicated regression coverage is in `tests/multi-timeframe.test.ts`.
 
+
+
+Backtesting implementation notes
+- Research page: `/backtest`; server endpoint: `POST /api/backtest`.
+- The endpoint requests up to 1,000 historical candles for the selected interval and each required higher timeframe. It may consume multiple provider credits per run.
+- Current baseline strategy: EMA 50/200 trend alignment, RSI 14 band, ATR 14 stop/target distances, and required higher-timeframe trend alignment.
+- Risk sizing is a generic price-unit simulation. Confirm contract size, pip value, lot step, leverage, and fee conventions for each instrument before interpreting the absolute currency P/L.
+- The engine does not submit trades, and a profitable backtest does not establish a future edge.
+
+
+## Backtesting validation notes
+
+- The backtest supports optional inclusive UTC `startDate` and `endDate` (`YYYY-MM-DD`). Both must be supplied together. Candles before `startDate` are indicator warm-up only and cannot trigger entries.
+- Historical requests ask the provider for up to 5,000 candles per timeframe. Always inspect the returned first/last test-candle timestamps and count; provider limits or market closures can mean a requested date range is not fully represented.
+- Signals are computed from the primary candle prefix available at that candle close (`signalTime` is the candle close timestamp) and entries are simulated at the next candle open. Higher-timeframe bars are only eligible after their opening timestamp plus interval duration.
+- If a stop is crossed by a gap at the next candle open, the simulation exits at the opening price before applying spread/slippage, instead of assuming a fill at the stop level. If stop and target are both touched intrabar, stop-loss-first remains the conservative assumption.
+- `Expectancy (R)` is mean net trade P/L divided by each trade's initial stop-distance risk amount. Costs may make realized loss exceed the planned risk.
+- This remains a bar-based simulation. It does not model order-book depth, variable spreads, swaps/funding, broker-specific contract sizing, partial fills, or all intrabar price paths. Do not interpret passing software tests as evidence of strategy profitability.

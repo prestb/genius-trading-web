@@ -9,9 +9,11 @@ import {
   validateMarketData,
 } from "../lib/trend-analysis";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Activity,
   Bell,
+  FlaskConical,
   BrainCircuit,
   CandlestickChart,
   ChevronDown,
@@ -576,6 +578,10 @@ export default function Home() {
               )}
             </button>
           ))}
+          <Link href="/backtest" className="nav-item">
+            <FlaskConical size={17} />
+            <span>Backtesting Lab</span>
+          </Link>
         </nav>
 
         <div className="sidebar-spacer" />
