@@ -1,6 +1,7 @@
 
 "use client";
-
+import { analyzePriceAction } from "../lib/price-action";
+import { analyzeSignal } from "../lib/signal-analysis";
 import { calculateIndicators } from "../lib/indicators";
 import {
   analyzeTrend,
@@ -121,6 +122,33 @@ export default function Home() {
     [candles]
   );
 
+  const priceAction = useMemo(
+    () => analyzePriceAction({ candles }),
+    [candles]
+  );
+
+  const signalAnalysis = useMemo(
+    () =>
+      analyzeSignal({
+        symbol,
+        interval: intervalMap[timeframe] || "15min",
+        candles,
+        indicators,
+        trend: trendAnalysis,
+        isFresh: marketFreshness?.isFresh === true,
+        candleAgeSeconds: marketFreshness?.candleAgeSeconds ?? null,
+        priceAction,
+      }),
+    [
+      symbol,
+      timeframe,
+      candles,
+      indicators,
+      trendAnalysis,
+      marketFreshness,
+      priceAction,
+    ]
+  );
 
 
 
@@ -681,6 +709,115 @@ export default function Home() {
             </div>
           </section>
 
+          <section
+            className="panel"
+            style={{ padding: "20px", marginBottom: "24px" }}
+          >
+            <div className="section-heading">
+              <div>
+                <h2>Price-action analysis</h2>
+                <p>
+                  Confirmed market structure, swing levels, and liquidity events.
+                </p>
+              </div>
+              <span className="soon-pill">
+                {priceAction.status === "Available"
+                  ? "ANALYZED"
+                  : "UNAVAILABLE"}
+              </span>
+            </div>
+
+            <div className="metric-grid">
+              <div className="metric-card">
+                <div className="metric-top">
+                  <span>Market structure</span>
+                </div>
+                <div className="metric-value">{priceAction.direction}</div>
+                <div className="metric-foot">
+                  {priceAction.actionable
+                    ? "Actionable structural evidence"
+                    : "Evidence only — not a standalone signal"}
+                </div>
+              </div>
+
+              <div className="metric-card">
+                <div className="metric-top">
+                  <span>Latest swing high</span>
+                </div>
+                <div className="metric-value">
+                  {priceAction.latestSwingHigh !== null
+                    ? priceAction.latestSwingHigh.toFixed(priceDigits)
+                    : "Unavailable"}
+                </div>
+                <div className="metric-foot">Potential resistance reference</div>
+              </div>
+
+              <div className="metric-card">
+                <div className="metric-top">
+                  <span>Latest swing low</span>
+                </div>
+                <div className="metric-value">
+                  {priceAction.latestSwingLow !== null
+                    ? priceAction.latestSwingLow.toFixed(priceDigits)
+                    : "Unavailable"}
+                </div>
+                <div className="metric-foot">Potential support reference</div>
+              </div>
+
+              <div className="metric-card">
+                <div className="metric-top">
+                  <span>Detected events</span>
+                </div>
+                <div className="metric-value">{priceAction.events.length}</div>
+                <div className="metric-foot">
+                  Structure breaks and liquidity sweeps
+                </div>
+              </div>
+            </div>
+
+            <p>{priceAction.summary}</p>
+
+            {priceAction.events.length > 0 ? (
+              <div className="analysis-checks">
+                <div className="checks-heading">RECENT PRICE-ACTION EVENTS</div>
+
+                {priceAction.events.map((event, index) => (
+                  <div
+                    className="check-row"
+                    key={`${event.type}-${event.candleTime}-${index}`}
+                  >
+                    <span
+                      className="check-empty"
+                      style={{
+                        background: event.type.startsWith("BULLISH")
+                          ? "#16a34a"
+                          : "#dc2626",
+                      }}
+                    />
+                    <span>{event.description}</span>
+                    <span className="check-pending">
+                      {event.level.toFixed(priceDigits)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="metric-foot">
+                No qualifying structure breaks or liquidity sweeps were detected.
+              </p>
+            )}
+
+            {priceAction.reasons.length > 0 && (
+              <div className="analysis-checks">
+                <div className="checks-heading">ANALYSIS NOTES</div>
+                {priceAction.reasons.map((reason, index) => (
+                  <p key={`${reason}-${index}`} className="metric-foot">
+                    {reason}
+                  </p>
+                ))}
+              </div>
+            )}
+          </section>
 
           <div className="section-heading">
             <div>
@@ -910,133 +1047,23 @@ export default function Home() {
               </div>
             </div>
 
-            <aside className="panel signal-panel">
-              <div className="panel-title-row">
-                <div>
-                  <div className="panel-kicker">
-                    <Sparkles size={14} /> GENIUS AI
-                  </div>
-                  <h3>Signal analysis</h3>
-                </div>
-                <span className="soon-pill">STANDBY</span>
-              </div>
-
-
-              <div className="signal-empty">
-                <div className="brain-orb">
-                  <BrainCircuit size={26} />
-                </div>
-
-                <h4>
-                  {trendAnalysis.direction === "Bullish"
-                    ? "Bullish trend detected"
-                    : trendAnalysis.direction === "Bearish"
-                      ? "Bearish trend detected"
-                      : trendAnalysis.direction === "Neutral"
-                        ? "No clear trend"
-                        : "Insufficient data"}
-                </h4>
-
-                <p>{trendAnalysis.explanation}</p>
-
-                <div className="metric-foot">
-                  Analysis timeframe: {trendAnalysis.timeframe}
-                </div>
-
-                <div className="metric-foot">
-                  Trend checks: {trendAnalysis.checksPassed}/
-                  {trendAnalysis.checksRequired}
-                </div>
-
-                <p>
-                  This is a rule-based trend assessment, not a buy or sell
-                  recommendation.
-                </p>
-              </div>
-
-
-
-              <div className="analysis-checks">
-                <div className="checks-heading">
-                  ANALYSIS CHECKLIST{" "}
-                  <span>
-                    {marketValidation.checks.filter((check) => check.passed).length}/
-                    {marketValidation.checks.length}
-                  </span>
-                </div>
-
-                {marketValidation.checks.map((check) => (
-                  <div className="check-row" key={check.label}>
-                    <span
-                      className="check-empty"
-                      style={{
-                        background: check.passed ? "#16a34a" : "#dc2626",
-                      }}
-                    />
-                    <span>{check.label}</span>
-                    <span className="check-pending">
-                      {check.passed ? "Passed" : "Failed"}
-                    </span>
-                  </div>
-                ))}
-
-                <div className="check-row">
-                  <span
-                    className="check-empty"
-                    style={{
-                      background:
-                        trendAnalysis.direction === "Insufficient data"
-                          ? "#dc2626"
-                          : "#16a34a",
-                    }}
-                  />
-                  <span>Trend assessment</span>
-                  <span className="check-pending">
-                    {trendAnalysis.direction === "Insufficient data"
-                      ? "Unavailable"
-                      : trendAnalysis.direction}
-                  </span>
-                </div>
-
-                <div className="check-row">
-                  <span
-                    className="check-empty"
-                    style={{
-                      background:
-                        indicators.atr14 !== null ? "#16a34a" : "#dc2626",
-                    }}
-                  />
-                  <span>Volatility (ATR)</span>
-                  <span className="check-pending">
-                    {indicators.atr14 !== null ? "Available" : "Unavailable"}
-                  </span>
-                </div>
-
-                <div className="check-row">
-                  <span
-                    className="check-empty"
-                    style={{
-                      background:
-                        indicators.ema200 !== null ? "#16a34a" : "#dc2626",
-                    }}
-                  />
-                  <span>EMA 200</span>
-                  <span className="check-pending">
-                    {indicators.ema200 !== null ? "Available" : "Needs more data"}
-                  </span>
-                </div>
-              </div>
-
-
-              <div className="signal-disclaimer">
-                <ShieldCheck size={15} />
-                <span>
-                  Genius will not issue a trading signal until the required
-                  market data and analysis have been validated.
-                </span>
-              </div>
-            </aside>
-          </section>
+            {signalAnalysis.invalidation.map((item, index) => (
+              <p className="metric-foot" key={$DIL0-$DIL1}>
+            • {item}
+          </p>
+))}
+        </div>
+        <div className="signal-disclaimer">
+          <ShieldCheck size={15} />
+          <span>
+            Rule-based market research, not financial advice. Stop-loss and
+            take-profit values are estimates, not guaranteed execution prices.
+            An actionable result does not guarantee a profitable trade.
+          </span>
+        </div>
+      </aside>
+    
+          </sexrion >
 
           <div className="section-heading watch-heading">
             <div>
@@ -1079,7 +1106,7 @@ export default function Home() {
               </div>
 
               {visibleSymbols.map((item, i) => {
-                
+
                 const isWatched = watchlist.includes(item);
 
                 return (
@@ -1163,7 +1190,7 @@ export default function Home() {
               Not financial advice
             </span>
           </footer>
-        </div>
+        </div >
       </section >
     </main >
   );
