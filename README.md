@@ -127,3 +127,13 @@ Backtesting implementation notes
 - Current baseline strategy: EMA 50/200 trend alignment, RSI 14 band, ATR 14 stop/target distances, and required higher-timeframe trend alignment.
 - Risk sizing is a generic price-unit simulation. Confirm contract size, pip value, lot step, leverage, and fee conventions for each instrument before interpreting the absolute currency P/L.
 - The engine does not submit trades, and a profitable backtest does not establish a future edge.
+
+
+## Backtesting validation notes
+
+- The backtest supports optional inclusive UTC `startDate` and `endDate` (`YYYY-MM-DD`). Both must be supplied together. Candles before `startDate` are indicator warm-up only and cannot trigger entries.
+- Historical requests ask the provider for up to 5,000 candles per timeframe. Always inspect the returned first/last test-candle timestamps and count; provider limits or market closures can mean a requested date range is not fully represented.
+- Signals are computed from the primary candle prefix available at that candle close (`signalTime` is the candle close timestamp) and entries are simulated at the next candle open. Higher-timeframe bars are only eligible after their opening timestamp plus interval duration.
+- If a stop is crossed by a gap at the next candle open, the simulation exits at the opening price before applying spread/slippage, instead of assuming a fill at the stop level. If stop and target are both touched intrabar, stop-loss-first remains the conservative assumption.
+- `Expectancy (R)` is mean net trade P/L divided by each trade's initial stop-distance risk amount. Costs may make realized loss exceed the planned risk.
+- This remains a bar-based simulation. It does not model order-book depth, variable spreads, swaps/funding, broker-specific contract sizing, partial fills, or all intrabar price paths. Do not interpret passing software tests as evidence of strategy profitability.
