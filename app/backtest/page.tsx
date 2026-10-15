@@ -36,6 +36,8 @@ export default function BacktestPage() {
   const [slippageBps, setSlippageBps] = useState("0.5");
   const [feeBpsPerSide, setFeeBpsPerSide] = useState("0");
   const [maxCandlesInTrade, setMaxCandlesInTrade] = useState("100");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<BacktestResult | null>(null);
@@ -50,6 +52,14 @@ export default function BacktestPage() {
   }, [result]);
 
   async function run() {
+    if (Boolean(startDate) !== Boolean(endDate)) {
+      setError("Choose both a start date and an end date, or leave both blank.");
+      return;
+    }
+    if (startDate && endDate && startDate > endDate) {
+      setError("Start date must be on or before end date.");
+      return;
+    }
     setLoading(true);
     setError("");
     setResult(null);
@@ -66,7 +76,7 @@ export default function BacktestPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({ symbol, interval, config }),
+        body: JSON.stringify({ symbol, interval, startDate: startDate || undefined, endDate: endDate || undefined, config }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Backtest request failed.");
@@ -93,6 +103,8 @@ export default function BacktestPage() {
       <section className="backtest-card">
         <div className="backtest-section-title"><h2>Simulation settings</h2><span>Historical candles · No live orders</span></div>
         <div className="backtest-form-grid">
+          <label>Start date (UTC, optional)<input type="date" value={startDate} max={endDate || undefined} onChange={(event) => setStartDate(event.target.value)} /></label>
+          <label>End date (UTC, optional)<input type="date" value={endDate} min={startDate || undefined} max={new Date().toISOString().slice(0, 10)} onChange={(event) => setEndDate(event.target.value)} /></label>
           <label>Instrument<input value={symbol} onChange={(event) => setSymbol(event.target.value)} maxLength={30} placeholder="EUR/USD" /></label>
           <label>Signal timeframe<select value={interval} onChange={(event) => setInterval(event.target.value as BacktestInterval)}>{intervals.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           <label>Starting balance<input inputMode="decimal" type="number" min="1" value={initialBalance} onChange={(event) => setInitialBalance(event.target.value)} /></label>
@@ -102,18 +114,19 @@ export default function BacktestPage() {
           <label>Fee per side (basis points)<input inputMode="decimal" type="number" min="0" max="1000" step="0.1" value={feeBpsPerSide} onChange={(event) => setFeeBpsPerSide(event.target.value)} /></label>
           <label>Maximum bars per trade<input inputMode="numeric" type="number" min="1" max="10000" step="1" value={maxCandlesInTrade} onChange={(event) => setMaxCandlesInTrade(event.target.value)} /></label>
         </div>
-        <div className="backtest-actions"><p>Loads up to 1,000 candles for the selected timeframe and each required higher timeframe. Provider usage limits apply.</p><button className="primary-button" onClick={run} disabled={loading}>{loading ? <span className="backtest-spinner" /> : <Play size={15} />}{loading ? "Running simulation…" : "Run backtest"}</button></div>
+        <div className="backtest-actions"><p>Leave both dates blank for the latest available history, or select both dates for a historical period. Pre-period candles are used only to warm up indicators. Provider history limits apply.</p><button className="primary-button" onClick={run} disabled={loading}>{loading ? <span className="backtest-spinner" /> : <Play size={15} />}{loading ? "Running simulation…" : "Run backtest"}</button></div>
       </section>
 
       {error && <div className="backtest-error" role="alert"><ShieldAlert size={17} /><span>{error}</span></div>}
       {result && <>
-        <section className="backtest-results-head"><div><div className="backtest-eyebrow">RESULTS · {result.symbol} · {result.interval}</div><h2>{result.status === "completed" ? "Simulation complete" : "Insufficient history"}</h2></div><span className={`backtest-result-pill ${result.summary.netPnl >= 0 ? "positive" : "negative"}`}>{percent(result.summary.returnPercent)} return</span></section>
+        <section className="backtest-results-head"><div><div className="backtest-eyebrow">RESULTS · {result.symbol} · {result.interval}</div><p className="backtest-period-detail">Test candles: {result.period.firstCandleAt ? new Date(result.period.firstCandleAt).toLocaleString() : "—"} to {result.period.lastCandleAt ? new Date(result.period.lastCandleAt).toLocaleString() : "—"} · {result.period.candlesInRange} candles in range</p><h2>{result.status === "completed" ? "Simulation complete" : "Insufficient history"}</h2></div><span className={`backtest-result-pill ${result.summary.netPnl >= 0 ? "positive" : "negative"}`}>{percent(result.summary.returnPercent)} return</span></section>
         <section className="backtest-metrics">
           <Metric label="Net P/L" value={`${result.summary.netPnl >= 0 ? "+" : "−"}${money(Math.abs(result.summary.netPnl))}`} detail={`${money(result.summary.finalBalance)} final balance`} positive={result.summary.netPnl >= 0} />
           <Metric label="Win rate" value={percent(result.summary.winRatePercent)} detail={`${result.summary.wins} wins · ${result.summary.losses} losses`} />
           <Metric label="Profit factor" value={result.summary.profitFactor === null ? "∞*" : result.summary.profitFactor.toFixed(2)} detail={`${result.summary.trades} closed trades`} />
           <Metric label="Max drawdown" value={percent(result.summary.maxDrawdownPercent)} detail="Marked-to-market equity" negative={result.summary.maxDrawdownPercent > 15} />
           <Metric label="Expectancy / trade" value={money(result.summary.expectancyPerTrade)} detail="Average net result" positive={result.summary.expectancyPerTrade >= 0} />
+          <Metric label="Expectancy (R)" value={`${result.summary.expectancyR.toFixed(2)}R`} detail="Average net P/L divided by initial stop risk" positive={result.summary.expectancyR >= 0} />
           <Metric label="Exposure" value={percent(result.summary.exposurePercent)} detail={`${result.summary.candlesAnalyzed} candles analyzed`} />
         </section>
         {equityData.length > 1 && <section className="backtest-card backtest-chart-card"><div className="backtest-section-title"><h2>Equity curve</h2><span>Realized and marked-to-market equity</span></div><div className="backtest-chart"><ResponsiveContainer width="100%" height="100%"><LineChart data={equityData} margin={{ top: 10, right: 15, bottom: 0, left: 0 }}><CartesianGrid stroke="#26343d" strokeDasharray="4 4" /><XAxis dataKey="time" hide /><YAxis domain={["auto", "auto"]} tick={{ fill: "#82919b", fontSize: 10 }} width={75} tickFormatter={(value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 0 })} /><Tooltip contentStyle={{ background: "#101820", border: "1px solid #30404a", borderRadius: 8, color: "#edf3f5", fontSize: 12 }} formatter={(value) => [money(Number(value)), "Equity"]} /><Line type="monotone" dataKey="equity" stroke="#f18a53" dot={false} strokeWidth={2} isAnimationActive={false} /></LineChart></ResponsiveContainer></div></section>}
