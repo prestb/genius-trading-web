@@ -22,6 +22,10 @@ export type BacktestInput = {
   candles: IndicatorCandle[];
   higherTimeframeCandles: Partial<Record<string, IndicatorCandle[]>>;
   config?: Partial<BacktestConfig>;
+  /** Inclusive UTC calendar date, e.g. 2025-01-01. Candles before this date are indicator warm-up only. */
+  startDate?: string;
+  /** Inclusive UTC calendar date, e.g. 2025-03-31. */
+  endDate?: string;
 };
 
 export type BacktestTrade = {
@@ -34,6 +38,7 @@ export type BacktestTrade = {
   stopLoss: number;
   takeProfit: number;
   quantity: number;
+  riskAmount: number;
   grossPnl: number;
   fees: number;
   netPnl: number;
@@ -49,6 +54,7 @@ export type BacktestResult = {
   symbol: string;
   interval: BacktestInterval;
   status: "completed" | "insufficient-data";
+  period: { startDate: string | null; endDate: string | null; firstCandleAt: string | null; lastCandleAt: string | null; candlesInRange: number };
   warnings: string[];
   config: BacktestConfig;
   summary: {
@@ -63,6 +69,7 @@ export type BacktestResult = {
     returnPercent: number;
     profitFactor: number | null;
     expectancyPerTrade: number;
+    expectancyR: number;
     maxDrawdownPercent: number;
     averageWin: number;
     averageLoss: number;
@@ -105,6 +112,7 @@ type OpenPosition = {
   stopLoss: number;
   takeProfit: number;
   quantity: number;
+  riskAmount: number;
   entryFee: number;
   initialEquity: number;
 };
@@ -134,13 +142,18 @@ function sideFee(price: number, quantity: number, feeBpsPerSide: number): number
 
 export function resolveStopTargetHit(
   direction: BacktestDirection,
-  candle: Pick<IndicatorCandle, "high" | "low">,
+  candle: Pick<IndicatorCandle, "high" | "low"> & Partial<Pick<IndicatorCandle, "open">>,
   stopLoss: number,
   takeProfit: number,
 ): { price: number; reason: "stop-loss" | "take-profit" } | null {
   const stopTouched = direction === "BUY" ? candle.low <= stopLoss : candle.high >= stopLoss;
   const targetTouched = direction === "BUY" ? candle.high >= takeProfit : candle.low <= takeProfit;
-  if (stopTouched) return { price: stopLoss, reason: "stop-loss" };
+  if (stopTouched) {
+    const openingPrice = typeof candle.open === "number" && Number.isFinite(candle.open) ? candle.open : null;
+    const gapThroughStop = openingPrice !== null &&
+      (direction === "BUY" ? openingPrice < stopLoss : openingPrice > stopLoss);
+    return { price: gapThroughStop ? openingPrice : stopLoss, reason: "stop-loss" };
+  }
   if (targetTouched) return { price: takeProfit, reason: "take-profit" };
   return null;
 }
@@ -214,6 +227,7 @@ function closePosition(
     stopLoss: position.stopLoss,
     takeProfit: position.takeProfit,
     quantity: position.quantity,
+    riskAmount: position.riskAmount,
     grossPnl,
     fees,
     netPnl,
@@ -229,12 +243,13 @@ function emptyResult(input: BacktestInput, config: BacktestConfig, warning: stri
     symbol: input.symbol,
     interval: input.interval,
     status: "insufficient-data",
+    period: { startDate: input.startDate ?? null, endDate: input.endDate ?? null, firstCandleAt: null, lastCandleAt: null, candlesInRange: 0 },
     warnings: [warning],
     config,
     summary: {
-      candlesAnalyzed: input.candles.length, trades: 0, wins: 0, losses: 0, winRatePercent: 0,
+      candlesAnalyzed: 0, trades: 0, wins: 0, losses: 0, winRatePercent: 0,
       initialBalance: config.initialBalance, finalBalance: config.initialBalance, netPnl: 0,
-      returnPercent: 0, profitFactor: null, expectancyPerTrade: 0, maxDrawdownPercent: 0,
+      returnPercent: 0, profitFactor: null, expectancyPerTrade: 0, expectancyR: 0, maxDrawdownPercent: 0,
       averageWin: 0, averageLoss: 0, exposurePercent: 0,
     },
     trades: [],
@@ -251,7 +266,25 @@ export function runBacktest(input: BacktestInput): BacktestResult {
   }
   if (!Number.isInteger(config.maxCandlesInTrade) || config.maxCandlesInTrade < 1 || config.maxCandlesInTrade > 10000) throw new Error("maxCandlesInTrade must be an integer between 1 and 10000.");
   if (!validateChronologicalCandles(input.candles)) throw new Error("Candles must be valid OHLC data in strictly increasing chronological order.");
-  if (input.candles.length < MIN_CANDLES + 1) return emptyResult(input, config, `At least ${MIN_CANDLES + 1} chronological candles are required to generate and execute trades.`);
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  for (const [name, value] of [["startDate", input.startDate], ["endDate", input.endDate]] as const) {
+    if (value !== undefined && (!datePattern.test(value) || !Number.isFinite(Date.parse(`${value}T00:00:00.000Z`)) || new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) !== value)) {
+      throw new Error(`${name} must be a valid YYYY-MM-DD calendar date.`);
+    }
+  }
+  if (input.startDate && input.endDate && input.startDate > input.endDate) throw new Error("startDate must be on or before endDate.");
+  const rangeStart = input.startDate ? Date.parse(`${input.startDate}T00:00:00.000Z`) : Date.parse(input.candles[0]?.time ?? "");
+  const rangeEndExclusive = input.endDate ? Date.parse(`${input.endDate}T00:00:00.000Z`) + 86_400_000 : Number.POSITIVE_INFINITY;
+  const rangeStartIndex = input.candles.findIndex((candle) => Date.parse(candle.time) >= rangeStart && Date.parse(candle.time) < rangeEndExclusive);
+  let rangeEndIndex = -1;
+  for (let index = input.candles.length - 1; index >= 0; index--) {
+    const time = Date.parse(input.candles[index]!.time);
+    if (time >= rangeStart && time < rangeEndExclusive) { rangeEndIndex = index; break; }
+  }
+  const candlesInRange = rangeStartIndex >= 0 && rangeEndIndex >= rangeStartIndex ? rangeEndIndex - rangeStartIndex + 1 : 0;
+  if (input.candles.length < MIN_CANDLES + 1 || candlesInRange < 1 || (Boolean(input.startDate) && rangeStartIndex < MIN_CANDLES)) {
+    return emptyResult(input, config, `Insufficient history for the selected period. At least ${MIN_CANDLES} warm-up candles before the first test candle and one in-range candle are required.`);
+  }
 
   const warnings = [
     "Signals are evaluated at candle close and filled at the next candle open; future candles are never used for a signal.",
@@ -260,17 +293,20 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     "Position size uses ATR stop distance; spread, slippage, and fees can make realized losses exceed the configured risk percentage.",
     "This is a rule-based historical simulation, not evidence of future profitability. Provider data quality and instrument-specific contract sizing may affect results.",
   ];
+  if (input.startDate || input.endDate) {
+    warnings.push("Historical range coverage is limited by the data provider and market sessions. Review the reported first/last test-candle timestamps and candle count; the requested calendar range may not be fully represented.");
+  }
   const trades: BacktestTrade[] = [];
-  const firstCandleTime = Date.parse(input.candles[0]!.time);
+  const firstCandleTime = Date.parse(input.candles[rangeStartIndex]!.time);
   const equityCurve: BacktestEquityPoint[] = [{
-    time: new Date(firstCandleTime - INTERVAL_SECONDS[input.interval]! * 1000).toISOString(),
+    time: new Date((input.startDate ? rangeStart : firstCandleTime) - INTERVAL_SECONDS[input.interval]! * 1000).toISOString(),
     equity: config.initialBalance,
   }];
   let balance = config.initialBalance;
   let position: OpenPosition | null = null;
   let barsExposed = 0;
 
-  for (let i = 0; i < input.candles.length; i++) {
+  for (let i = 0; i <= rangeEndIndex; i++) {
     const candle = input.candles[i]!;
     if (position) {
       barsExposed++;
@@ -292,7 +328,7 @@ export function runBacktest(input: BacktestInput): BacktestResult {
       }
     }
 
-    if (!position && i < input.candles.length - 1 && i >= MIN_CANDLES - 1) {
+    if (!position && i >= rangeStartIndex && i < rangeEndIndex && i >= MIN_CANDLES - 1) {
       const direction = candidateDirection(input.candles, i, input.interval, input.higherTimeframeCandles ?? {});
       const next = input.candles[i + 1]!;
       const atr = calculateIndicators(input.candles.slice(0, i + 1)).atr14;
@@ -304,13 +340,14 @@ export function runBacktest(input: BacktestInput): BacktestResult {
         const entryFee = sideFee(entryPrice, quantity, config.feeBpsPerSide);
         position = {
           direction,
-          signalTime: candle.time,
+          signalTime: new Date(Date.parse(candle.time) + INTERVAL_SECONDS[input.interval]! * 1000).toISOString(),
           entryTime: next.time,
           entryIndex: i + 1,
           entryPrice,
           stopLoss: entryPrice + (direction === "BUY" ? -1 : 1) * stopDistance,
           takeProfit: entryPrice + (direction === "BUY" ? 1 : -1) * targetDistance,
           quantity,
+          riskAmount: quantity * stopDistance,
           entryFee,
           initialEquity: balance,
         };
@@ -324,17 +361,17 @@ export function runBacktest(input: BacktestInput): BacktestResult {
       const estimatedExitFee = sideFee(markPrice, position.quantity, config.feeBpsPerSide);
       markedEquity += unrealizedGross - position.entryFee - estimatedExitFee;
     }
-    equityCurve.push({ time: candle.time, equity: markedEquity });
+    if (i >= rangeStartIndex) equityCurve.push({ time: candle.time, equity: markedEquity });
   }
 
   // If an entry was opened on the last available bar, no future candle exists to evaluate it.
   // The loop never opens a position at the final bar, so this is a defensive safeguard.
   if (position) {
-    const last = input.candles.at(-1)!;
-    const trade = closePosition(position, last.close, last.time, input.candles.length - 1, "end-of-data", config);
+    const last = input.candles[rangeEndIndex]!;
+    const trade = closePosition(position, last.close, last.time, rangeEndIndex, "end-of-data", config);
     trades.push(trade);
     balance += trade.netPnl;
-    equityCurve.push({ time: last.time, equity: balance });
+    if (equityCurve.at(-1)?.time !== last.time) equityCurve.push({ time: last.time, equity: balance });
   }
 
   const wins = trades.filter((trade) => trade.netPnl > 0);
@@ -355,10 +392,17 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     symbol: input.symbol,
     interval: input.interval,
     status: "completed",
+    period: {
+      startDate: input.startDate ?? null,
+      endDate: input.endDate ?? null,
+      firstCandleAt: input.candles[rangeStartIndex]?.time ?? null,
+      lastCandleAt: input.candles[rangeEndIndex]?.time ?? null,
+      candlesInRange,
+    },
     warnings,
     config,
     summary: {
-      candlesAnalyzed: input.candles.length,
+      candlesAnalyzed: candlesInRange,
       trades: trades.length,
       wins: wins.length,
       losses: losses.length,
@@ -369,6 +413,7 @@ export function runBacktest(input: BacktestInput): BacktestResult {
       returnPercent: netPnl / config.initialBalance * 100,
       profitFactor: grossLosses > 0 ? grossWins / grossLosses : grossWins > 0 ? null : 0,
       expectancyPerTrade: trades.length ? netPnl / trades.length : 0,
+      expectancyR: trades.length ? trades.reduce((sum, trade) => sum + trade.netPnl / Math.max(trade.riskAmount, Number.EPSILON), 0) / trades.length : 0,
       maxDrawdownPercent,
       averageWin,
       averageLoss,
