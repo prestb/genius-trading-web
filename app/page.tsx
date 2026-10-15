@@ -2,6 +2,7 @@
 
 import { analyzePriceAction } from "../lib/price-action";
 import { analyzeSignal } from "../lib/signal-analysis";
+import { analyzeMultiTimeframe, getRequiredHigherTimeframes, type MultiTimeframeFrameInput } from "../lib/multi-timeframe";
 import { calculateIndicators } from "../lib/indicators";
 import {
   analyzeTrend,
@@ -83,9 +84,11 @@ export default function Home() {
   );
 
   const [candles, setCandles] = useState<Candle[]>([]);
+  const [multiTimeframeFrames, setMultiTimeframeFrames] = useState<MultiTimeframeFrameInput[]>([]);
   const [loadingMarket, setLoadingMarket] = useState(false);
   const [marketError, setMarketError] = useState("");
   const [retrievedAt, setRetrievedAt] = useState("");
+  const [marketDataIdentity, setMarketDataIdentity] = useState("");
 
   const [marketFreshness, setMarketFreshness] = useState<{
     latestCandleAt?: string;
@@ -127,30 +130,124 @@ export default function Home() {
     [candles]
   );
 
+  const selectedInterval = intervalMap[timeframe] || "15min";
+
+  const multiTimeframeAnalysis = useMemo(
+    () =>
+      analyzeMultiTimeframe({
+        symbol,
+        selectedInterval,
+        frames: multiTimeframeFrames,
+      }),
+    [symbol, selectedInterval, multiTimeframeFrames]
+  );
+
   // A signal can only be actionable when the engine's required checks pass.
   const signalAnalysis = useMemo(
     () =>
       analyzeSignal({
         symbol,
-        interval: intervalMap[timeframe] || "15min",
+        interval: selectedInterval,
         candles,
         indicators,
         trend: trendAnalysis,
-        isFresh: marketFreshness?.isFresh === true,
+        isFresh:
+          marketDataIdentity === `${symbol}|${selectedInterval}` &&
+          marketFreshness?.isFresh === true,
         candleAgeSeconds:
           marketFreshness?.candleAgeSeconds ?? null,
         priceAction,
+        multiTimeframe: multiTimeframeAnalysis,
       }),
     [
       symbol,
-      timeframe,
+      selectedInterval,
       candles,
       indicators,
       trendAnalysis,
       marketFreshness,
+      marketDataIdentity,
       priceAction,
+      multiTimeframeAnalysis,
     ]
   );
+
+  // Fetch each required higher timeframe independently. A missing or stale
+  // response remains a hard block in the signal engine.
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const requiredIntervals = getRequiredHigherTimeframes(selectedInterval);
+
+    setMultiTimeframeFrames([]);
+
+    if (requiredIntervals.length === 0) {
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
+    }
+
+    async function loadHigherTimeframes() {
+      const results = await Promise.all(
+        requiredIntervals.map(async (interval) => {
+          try {
+            const params = new URLSearchParams({ symbol, interval });
+            const response = await fetch(`/api/market?${params.toString()}`, {
+              cache: "no-store",
+              signal: controller.signal,
+            });
+            const data = (await response.json()) as MarketResponse;
+
+            if (
+              data.symbol !== symbol ||
+              data.interval !== interval ||
+              !Array.isArray(data.candles)
+            ) {
+              return null;
+            }
+
+            const frameCandles = data.candles;
+            const frameIndicators = calculateIndicators(frameCandles);
+            const latest = frameCandles.at(-1);
+            const frameTrend = analyzeTrend(
+              latest ? latest.close : null,
+              frameIndicators
+            );
+
+            return {
+              symbol,
+              interval,
+              candles: frameCandles,
+              isFresh: response.ok && data.isFresh === true,
+              candleAgeSeconds:
+                typeof data.candleAgeSeconds === "number"
+                  ? data.candleAgeSeconds
+                  : null,
+              direction: frameTrend.direction,
+            } satisfies MultiTimeframeFrameInput;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setMultiTimeframeFrames(
+          results.filter(
+            (frame): frame is MultiTimeframeFrameInput => frame !== null
+          )
+        );
+      }
+    }
+
+    void loadHigherTimeframes();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [symbol, selectedInterval, refreshKey]);
 
   // Load fresh prices for watchlist instruments.
   useEffect(() => {
@@ -243,6 +340,10 @@ export default function Home() {
     async function loadMarketData() {
       setLoadingMarket(true);
       setMarketError("");
+      setCandles([]);
+      setRetrievedAt("");
+      setMarketDataIdentity("");
+      setMarketFreshness(null);
 
       try {
         const params = new URLSearchParams({
@@ -299,6 +400,7 @@ export default function Home() {
         if (!cancelled) {
           setCandles(data.candles);
           setRetrievedAt(data.retrievedAt || "");
+          setMarketDataIdentity(`${symbol}|${intervalMap[timeframe] || "15min"}`);
 
           setMarketFreshness({
             latestCandleAt: data.latestCandleAt,
@@ -317,6 +419,7 @@ export default function Home() {
         ) {
           setCandles([]);
           setRetrievedAt("");
+          setMarketDataIdentity("");
           setMarketFreshness(null);
 
           setMarketError(
@@ -1198,6 +1301,35 @@ export default function Home() {
                         signalAnalysis.candleAgeSeconds % 60
                       )}s`}
                 </div>
+              </div>
+
+              <div className="analysis-checks">
+                <div className="checks-heading">
+                  HIGHER-TIMEFRAME CONFIRMATION
+                  <span>{multiTimeframeAnalysis.status}</span>
+                </div>
+                <p className="metric-foot">{multiTimeframeAnalysis.summary}</p>
+                {multiTimeframeAnalysis.frames.map((frame) => (
+                  <div className="check-row" key={frame.interval}>
+                    <span
+                      className="check-empty"
+                      style={{
+                        background:
+                          frame.status === "Confirmed"
+                            ? "#16a34a"
+                            : frame.status === "Conflict"
+                              ? "#dc2626"
+                              : "#d97706",
+                      }}
+                    />
+                    <span>
+                      {frame.interval}: {frame.detail}
+                    </span>
+                    <span className="check-pending">
+                      {frame.status}
+                    </span>
+                  </div>
+                ))}
               </div>
 
               <div className="analysis-checks">
