@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
                   );
             }
 
-      
+
 
             const isFresh = isCandleFresh(
                   candleAgeSeconds,

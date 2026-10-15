@@ -39,7 +39,7 @@ export function analyzeTrend(
       checksRequired: 3,
     };
   }
-
+ 
   const priceAboveEma50 = latestClose > ema50;
   const priceBelowEma50 = latestClose < ema50;
   const rsiBullish = rsi14 > 50;
