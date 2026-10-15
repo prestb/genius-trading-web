@@ -101,3 +101,19 @@ Keep market-data and any AI API keys in server-side environment variables.
 Do not generate actionable signals from stale, malformed, or insufficient data.
 Backtest and forward-test strategies before relying on their output.
 Genius is an analysis tool only; it does not place trades and does not guarantee results.
+
+## Multi-timeframe confirmation
+
+Actionable BUY/SELL signals now require the selected timeframe's required higher-timeframe trends to agree:
+
+- 1min → 5min and 15min
+- 5min → 15min and 1h
+- 15min / 30min → 1h and 4h
+- 1h → 4h and 1day
+- 4h → 1day and 1week
+- 1day → 1week
+
+The market endpoint accepts `1week` and applies a freshness threshold of two weekly intervals. Missing, stale, invalid, insufficient, neutral, or conflicting higher-timeframe data blocks actionable signals and removes the risk plan. Confirmation is tied to the current symbol and selected interval. This is a conservative rule-based research gate, not a prediction or guarantee.
+
+Dedicated regression coverage is in `tests/multi-timeframe.test.ts`.
+
