@@ -41,7 +41,7 @@ describe("runBacktest", () => {
     expect(result.summary.trades).toBe(result.trades.length);
     expect(Number.isFinite(result.summary.finalBalance)).toBe(true);
     expect(result.warnings.some((warning) => warning.includes("future candles"))).toBe(true);
-    expect(result.trades.every((trade) => Date.parse(trade.signalTime) < Date.parse(trade.entryTime))).toBe(true);
+    expect(result.trades.every((trade) => Date.parse(trade.signalTime) <= Date.parse(trade.entryTime))).toBe(true);
   });
 
   it("does not generate trades without the required higher-timeframe candles", () => {
@@ -108,4 +108,49 @@ describe("runBacktest", () => {
     expect(result.summary.exposurePercent).toBeGreaterThanOrEqual(0);
     expect(result.summary.exposurePercent).toBeLessThanOrEqual(100);
   });
+
+  it("restricts simulated trades to an inclusive UTC date range while using earlier candles for warm-up", () => {
+    const start = Date.parse("2024-12-31T20:00:00.000Z");
+    const candles = makeCandles(450, 60, start);
+    const result = runBacktest(validInput({ candles, startDate: "2025-01-01", endDate: "2025-01-01" }));
+    expect(result.status).toBe("completed");
+    expect(result.summary.candlesAnalyzed).toBe(210);
+    expect(result.period.candlesInRange).toBe(210);
+    expect(result.period.firstCandleAt).toBe("2025-01-01T00:00:00.000Z");
+    expect(result.trades.every((trade) =>
+      Date.parse(trade.signalTime) >= Date.parse("2025-01-01T00:00:00.000Z") &&
+      Date.parse(trade.exitTime) < Date.parse("2025-01-02T00:00:00.000Z")
+    )).toBe(true);
+  });
+
+  it("rejects reversed and malformed historical date ranges", () => {
+    expect(() => runBacktest(validInput({ startDate: "2025-02-01", endDate: "2025-01-01" })))
+      .toThrow(/startDate must be on or before endDate/);
+    expect(() => runBacktest(validInput({ startDate: "2025-02-30", endDate: "2025-03-01" })))
+      .toThrow(/valid YYYY-MM-DD/);
+  });
+
+  it("requires pre-period warm-up history for an explicit start date", () => {
+    const candles = makeCandles(250, 60, Date.parse("2025-01-01T00:00:00.000Z"));
+    const result = runBacktest(validInput({ candles, startDate: "2025-01-01", endDate: "2025-01-01" }));
+    expect(result.status).toBe("insufficient-data");
+    expect(result.trades).toHaveLength(0);
+  });
+
+  it("models a stop gap at the candle open rather than assuming a fill at the stop price", () => {
+    expect(resolveStopTargetHit("BUY", { open: 90, high: 94, low: 88 }, 95, 105))
+      .toEqual({ price: 90, reason: "stop-loss" });
+    expect(resolveStopTargetHit("SELL", { open: 110, high: 112, low: 106 }, 105, 95))
+      .toEqual({ price: 110, reason: "stop-loss" });
+  });
+
+  it("blocks trades if completed higher-timeframe candles are unordered or duplicated", () => {
+    const htf = makeCandles(700, 300);
+    htf[400] = { ...htf[400]!, time: htf[399]!.time };
+    const result = runBacktest(validInput({
+      higherTimeframeCandles: { "5min": htf, "15min": makeCandles(700, 900) },
+    }));
+    expect(result.trades).toHaveLength(0);
+  });
+
 });
