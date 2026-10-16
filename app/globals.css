@@ -10,3 +10,8 @@
 .backtest-period-detail{font-size:10px;color:#84939d;margin:8px 0 0;line-height:1.6}
 
 .backtest-validation-option{margin-top:18px;border:1px solid #263640;border-radius:9px;background:#0b1319;padding:13px 14px}.backtest-validation-option label{display:flex;align-items:flex-start;gap:11px;cursor:pointer}.backtest-validation-option input{margin-top:3px;accent-color:#f18a53}.backtest-validation-option span{display:grid;gap:5px}.backtest-validation-option strong{font-size:11px;color:#dce5e9}.backtest-validation-option small{font-size:10px;line-height:1.6;color:#80909a}.backtest-validation-intro{font-size:10px;line-height:1.7;color:#8a9aa4;margin:0 0 14px}.backtest-validation-table{min-width:900px}.backtest-validation-table td:first-child{color:#e0e7ea;font-weight:650}.backtest-validation-insufficient{display:flex;gap:10px;align-items:flex-start;border:1px solid #60472f;background:#211a14;color:#e7b58e;border-radius:8px;padding:13px;font-size:11px;line-height:1.7}.backtest-validation-warnings{margin:14px 0 0;padding-left:18px;color:#82919b;font-size:10px;line-height:1.8}.backtest-validation-warnings li{padding:2px 0}
+
+
+/* Trade audit export controls */
+.backtest-audit-actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin: 12px 0 16px; }
+.backtest-audit-actions > span { color: var(--muted, #82919b); font-size: 12px; }

@@ -15,6 +15,7 @@ import {
 import type { BacktestConfig, BacktestInterval, BacktestResult } from "@/lib/backtesting";
 import type { OutOfSampleValidation } from "@/lib/backtest-validation";
 import type { RobustnessAnalysis } from "@/lib/robustness-analysis";
+import { tradesToAuditCsv } from "@/lib/trade-audit";
 
 const intervals: { label: string; value: BacktestInterval }[] = [
   { label: "1 minute", value: "1min" },
@@ -91,6 +92,24 @@ export default function BacktestPage() {
     }
   }
 
+  function exportTradeAudit() {
+    if (!result) return;
+    const csv = tradesToAuditCsv(result.trades, {
+      symbol: result.symbol,
+      interval: result.interval,
+      engineVersion: result.engineVersion,
+      periodStart: result.period.firstCandleAt ?? "",
+      periodEnd: result.period.lastCandleAt ?? "",
+    });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `genius-trading-audit-${result.symbol.replace(/[^a-z0-9_-]/gi, "_")}-${result.interval}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <main className="backtest-page">
       <div className="backtest-topline">
@@ -136,7 +155,7 @@ export default function BacktestPage() {
         {"validation" in result && result.validation && <ValidationPanel validation={result.validation} />}
         {"robustness" in result && result.robustness && <RobustnessPanel analysis={result.robustness} />}
         {equityData.length > 1 && <section className="backtest-card backtest-chart-card"><div className="backtest-section-title"><h2>Equity curve</h2><span>Realized and marked-to-market equity</span></div><div className="backtest-chart"><ResponsiveContainer width="100%" height="100%"><LineChart data={equityData} margin={{ top: 10, right: 15, bottom: 0, left: 0 }}><CartesianGrid stroke="#26343d" strokeDasharray="4 4" /><XAxis dataKey="time" hide /><YAxis domain={["auto", "auto"]} tick={{ fill: "#82919b", fontSize: 10 }} width={75} tickFormatter={(value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 0 })} /><Tooltip contentStyle={{ background: "#101820", border: "1px solid #30404a", borderRadius: 8, color: "#edf3f5", fontSize: 12 }} formatter={(value) => [money(Number(value)), "Equity"]} /><Line type="monotone" dataKey="equity" stroke="#f18a53" dot={false} strokeWidth={2} isAnimationActive={false} /></LineChart></ResponsiveContainer></div></section>}
-        <section className="backtest-card"><div className="backtest-section-title"><h2>Trade log</h2><span>{result.trades.length} trades · newest first</span></div>{result.trades.length ? <div className="backtest-table-wrap"><table className="backtest-table"><thead><tr><th>Direction</th><th>Entry</th><th>Exit</th><th>Entry price</th><th>Exit price</th><th>Net P/L</th><th>Exit reason</th></tr></thead><tbody>{[...result.trades].reverse().slice(0, 100).map((trade, index) => <tr key={`${trade.entryTime}-${index}`}><td><span className={`direction-tag ${trade.direction.toLowerCase()}`}>{trade.direction}</span></td><td>{new Date(trade.entryTime).toLocaleString()}</td><td>{new Date(trade.exitTime).toLocaleString()}</td><td>{trade.entryPrice.toFixed(5)}</td><td>{trade.exitPrice.toFixed(5)}</td><td className={trade.netPnl >= 0 ? "pnl-positive" : "pnl-negative"}>{trade.netPnl >= 0 ? "+" : "−"}{money(Math.abs(trade.netPnl))}</td><td>{trade.exitReason}</td></tr>)}</tbody></table></div> : <p className="backtest-empty">No trades met the strategy and higher-timeframe confirmation rules during this historical sample.</p>}
+        <section className="backtest-card"><div className="backtest-section-title"><h2>Trade log</h2><span>{result.trades.length} trades · newest first</span></div><div className="backtest-audit-actions"><button type="button" className="backtest-run-button" onClick={exportTradeAudit} disabled={!result.trades.length}>Export full trade audit CSV</button><span>Includes all trades, execution assumptions, risk levels, fees, and exit reasons.</span></div>{result.trades.length ? <div className="backtest-table-wrap"><table className="backtest-table"><thead><tr><th>Direction</th><th>Signal time</th><th>Entry</th><th>Exit</th><th>Entry price</th><th>Exit price</th><th>Stop loss</th><th>Take profit</th><th>Quantity</th><th>Fees</th><th>Net P/L</th><th>Bars held</th><th>Exit reason</th></tr></thead><tbody>{[...result.trades].reverse().slice(0, 100).map((trade, index) => <tr key={`${trade.entryTime}-${index}`}><td><span className={`direction-tag ${trade.direction.toLowerCase()}`}>{trade.direction}</span></td><td>{new Date(trade.entryTime).toLocaleString()}</td><td>{new Date(trade.exitTime).toLocaleString()}</td><td>{trade.entryPrice.toFixed(5)}</td><td>{trade.exitPrice.toFixed(5)}</td><td className={trade.netPnl >= 0 ? "pnl-positive" : "pnl-negative"}>{trade.netPnl >= 0 ? "+" : "−"}{money(Math.abs(trade.netPnl))}</td><td>{trade.barsHeld}</td><td>{trade.exitReason}</td></tr>)}</tbody></table></div> : <p className="backtest-empty">No trades met the strategy and higher-timeframe confirmation rules during this historical sample.</p>}
           <p className="backtest-table-note">Showing up to 100 most recent trades. The simulation assumes stop-loss is hit first when stop and target are both touched in the same candle.</p>
         </section>
         <section className="backtest-card backtest-warnings"><div className="backtest-section-title"><h2>Interpretation & limitations</h2></div><ul>{result.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul><p>* Profit factor is shown as ∞ when there are profitable trades and no losing trades in this sample; this is not proof of a robust strategy.</p></section>
