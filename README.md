@@ -1,148 +1,244 @@
-Genius — Trading Intelligence Roadmap
-Last reviewed: 15 October 2026
-Current milestone: Multi-timeframe confirmation and historical backtesting are implemented. Chronological out-of-sample validation and benchmark reporting are prepared for verification on a feature branch.
-Genius is a personal-use, multi-market trading research dashboard built with Next.js and TypeScript. It helps inspect market data and evaluate analysis before a trading decision. It does not place trades or guarantee outcomes.
-Current status
-The user confirmed that the clock/status control opens successfully and displays the latest candle time, candle age, freshness result, and last API retrieval time. The previous Invalid Hook Call error in that status area is no longer appearing.
-Completed
-[x]
-Responsive dark dashboard, navigation, market selector, search, chart, watchlist preview, and analysis panels.
-[x]
-Server-side Twelve Data adapter at app/api/market/route.ts; the API key is read from server environment configuration, not browser code.
-[x]
-Supported interval and symbol validation, UTC candle requests, and retrieval of up to 250 candles.
-[x]
-OHLC candle validation, chronological timestamp checks, and freshness metadata (latestCandleAt, candleAgeSeconds, isFresh, retrievedAt).
-[x]
-Reject malformed candle data and unexpected future timestamps; do not treat stale data as fresh.
-[x]
-Technical indicators implemented: EMA 50, EMA 200, RSI 14, and ATR 14.
-[x]
-Rule-based trend classification (bullish, bearish, neutral, or insufficient data) and market-data validation checks.
-[x]
-Clock/status UI wired to market freshness metadata; user-confirmed runtime check shows a fresh candle and retrieval timestamp.
-[x]
-Previous Invalid Hook Call in the freshness/status area resolved, according to the user's latest runtime check.
-Remaining roadmap
-Phase 1 — Stabilize and verify the data foundation
-[ ]
-Run TypeScript, ESLint, and production-build checks on the current Codespaces working tree.
-[ ]
-Add automated tests for symbol/interval validation, malformed OHLC candles, chronological ordering, stale candles, future timestamps, and API/provider failures.
-[ ]
-Verify freshness thresholds against each supported interval and explain provider/session delays clearly in the UI.
-[ ]
-Confirm that a failed or stale refresh never leaves old candles presented as current.
-[ ]
-Review Twelve Data plan limits, rate-limit responses, timeout handling, and safe error messages.
-Phase 2 — Formalize the analysis engine
-[ ]
-Define typed, versioned analysis input/output contracts.
-[ ]
-Combine validated candles, EMA 50/200, RSI 14, ATR 14, and trend checks in one server-side analysis pipeline.
-[ ]
-Add deterministic BUY / SELL / WAIT (no-trade) candidate rules with explicit reasons and confidence/quality gates; never emit a directional signal from stale or invalid data.
-[ ]
-Add risk calculations: proposed entry, stop-loss, take-profit, risk/reward ratio, and position-sizing inputs. Make clear that these are estimates, not guarantees.
-[ ]
-Show signal rationale, invalidation conditions, data timestamp, and the difference between trend context and an actionable setup.
-[ ]
-Keep AI assistance optional and subordinate to validated data, deterministic checks, and explicit risk controls.
-Phase 3 — Historical data and backtesting
-[ ]
-Verify the historical backtesting API against the configured Twelve Data plan and provider rate limits.
-[x]
-Build a deterministic backtesting engine that evaluates signals at candle close and enters at the next candle open.
-[x]
-Include configurable spread, slippage, per-side fees, ATR-based stops/targets, max holding period, and conservative stop-first handling for ambiguous candles.
-[x]
-Report sample size, win rate, expectancy, profit factor, marked-to-market maximum drawdown, average win/loss, and exposure.
-[x]
-Exclude incomplete higher-timeframe candles at each simulated decision time and block trades without aligned higher-timeframe confirmation.
-[ ]
-Add unit/property tests for no-look-ahead behavior, fills, metrics, and cost assumptions; run the full project checks.
-[ ]
-Add out-of-sample evaluation, benchmark comparison, and paper/forward testing before treating any strategy as usable.
-Phase 4 — Persistence and user settings
-[ ]
-Select and configure a database and server-side access layer.
-[ ]
-Persist user preferences, watchlists, selected symbols/intervals, and analysis/signal history.
-[ ]
-Add authentication and authorization if the app is exposed beyond the user's private workspace.
-[ ]
-Define retention, migrations, backups, and error recovery.
-Phase 5 — Reliability, security, and release
-[ ]
-Keep all provider/AI secrets server-side; ensure no secrets enter logs, browser responses, or committed files.
-[ ]
-Add structured server logging and basic observability without logging credentials.
-[ ]
-Test loading, empty, stale, provider-error, rate-limited, and offline states.
-[ ]
-Verify keyboard/mobile usability and chart readability.
-[ ]
-Configure deployment and environment variables; verify health, build, and runtime behavior in the deployed environment.
-[ ]
-Document known limitations and the fact that the app does not execute trades.
-Recommended next task
-Run the new backtesting suite, TypeScript, lint, and production build on a feature branch. Verify provider quotas and inspect several trades manually before relying on performance metrics. Then add out-of-sample splits and a buy-and-hold/flat baseline; backtest performance is research evidence, not a forecast.
-Run locally
-Requirements: Node.js 20.9+ and npm.
-npm install
+# Genius Trading Web
+
+A personal-use, multi-market trading research dashboard built with **Next.js**, **React**, and **TypeScript**. It combines validated market data, rule-based technical analysis, multi-timeframe confirmation, and historical backtesting.
+
+> **Research software only.** Genius Trading Web does not place trades, predict guaranteed outcomes, or establish that a strategy will be profitable in live markets.
+
+## Table of contents
+
+- [Features](#features)
+- [Project status](#project-status)
+- [Requirements](#requirements)
+- [Getting started](#getting-started)
+- [Environment configuration](#environment-configuration)
+- [Development commands](#development-commands)
+- [Application routes](#application-routes)
+- [Signal and market-data rules](#signal-and-market-data-rules)
+- [Backtesting methodology](#backtesting-methodology)
+- [Out-of-sample validation](#out-of-sample-validation)
+- [Robustness analysis](#robustness-analysis)
+- [Known limitations](#known-limitations)
+- [Security and trading safety](#security-and-trading-safety)
+- [Development roadmap](#development-roadmap)
+
+## Features
+
+### Market dashboard
+
+- Responsive dark dashboard with market selection, search, charts, watchlist preview, and analysis panels.
+- Server-side Twelve Data integration; provider credentials are not exposed to browser code.
+- Candle validation, chronological ordering checks, freshness metadata, and safe handling of stale or malformed data.
+- EMA 50, EMA 200, RSI 14, and ATR 14 indicators.
+- Rule-based trend classification and a visible market-data status.
+
+### Rule-based signals
+
+- Deterministic `BUY`, `SELL`, or `WAIT` decisions.
+- Trend, indicator, data-freshness, and risk-plan safety gates.
+- Explainable reasons and invalidation context.
+- Signals are blocked when required data is missing, stale, malformed, insufficient, neutral, or conflicting.
+
+### Multi-timeframe confirmation
+
+Actionable signals require confirmation from the mapped higher timeframes:
+
+| Selected timeframe | Required higher timeframes |
+| --- | --- |
+| 1 minute | 5 minutes and 15 minutes |
+| 5 minutes | 15 minutes and 1 hour |
+| 15 minutes or 30 minutes | 1 hour and 4 hours |
+| 1 hour | 4 hours and 1 day |
+| 4 hours | 1 day and 1 week |
+| 1 day | 1 week |
+
+Confirmation uses completed higher-timeframe candles only and is tied to the selected instrument and interval. Conflicting or unavailable confirmation blocks an actionable signal.
+
+### Backtesting Lab
+
+Open `/backtest` to run historical simulations with configurable:
+
+- Starting balance and risk percentage.
+- Spread, slippage, and per-side fees.
+- Maximum holding period.
+- Optional UTC start and end dates.
+- Optional chronological in-sample / out-of-sample validation.
+
+The report includes net P/L, return, win rate, profit factor, expectancy per trade and in risk units (`R`), maximum marked-to-market drawdown, exposure, equity curve, and a trade log.
+
+## Project status
+
+The supplied baseline includes the core market-analysis workflow, multi-timeframe confirmation, backtesting, date-range controls, and chronological out-of-sample reporting. This working update adds transaction-cost sensitivity and a heuristic performance breakdown by market regime. Keep these new changes on a feature branch until the complete test suite, TypeScript, lint, and production build pass and the branch is merged.
+
+## Requirements
+
+- Node.js 20.9 or newer.
+- npm.
+- A valid Twelve Data API key for live market data and historical backtests.
+
+## Getting started
+
+```bash
+npm ci
+```
+
+Create a local environment file from the example:
+
+```bash
 cp .env.example .env.local
+```
+
+Add the required provider key to `.env.local`, then start the development server:
+
+```bash
 npm run dev
-Open http://localhost:3000.
-Available checks:
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+On Windows PowerShell, copy the example with:
+
+```powershell
+Copy-Item .env.example .env.local
+```
+
+## Environment configuration
+
+Configure the Twelve Data API key in the server environment used by the market and backtesting routes. Check `.env.example` for the exact variable name expected by this repository.
+
+- Never prefix server-only credentials with `NEXT_PUBLIC_`.
+- Never commit `.env.local` or real API keys.
+- Do not paste credentials into issue reports, screenshots, or logs.
+
+## Development commands
+
+Run the full verification set before opening or merging a pull request:
+
+```bash
+npm test
 npx tsc --noEmit
 npm run lint
 npm run build
-Security and trading safety
-Never commit .env.local or provider/API secrets.
-Keep market-data and any AI API keys in server-side environment variables.
-Do not generate actionable signals from stale, malformed, or insufficient data.
-Backtest and forward-test strategies before relying on their output.
-Genius is an analysis tool only; it does not place trades and does not guarantee results.
+```
 
-## Multi-timeframe confirmation
+`npm test` runs the Vitest suite. A green test suite verifies only the behaviors covered by those tests; it is not evidence that a trading strategy is profitable.
 
-Actionable BUY/SELL signals now require the selected timeframe's required higher-timeframe trends to agree:
+## Application routes
 
-- 1min → 5min and 15min
-- 5min → 15min and 1h
-- 15min / 30min → 1h and 4h
-- 1h → 4h and 1day
-- 4h → 1day and 1week
-- 1day → 1week
+| Route | Purpose |
+| --- | --- |
+| `/` | Market dashboard and rule-based analysis |
+| `/backtest` | Historical backtesting, performance metrics, trade log, validation, and robustness reports |
+| `/api/market` | Validated market-data retrieval; see `app/api/market/route.ts` for supported methods |
+| `POST /api/backtest` | Historical data retrieval and backtest, validation, and robustness results |
 
-The market endpoint accepts `1week` and applies a freshness threshold of two weekly intervals. Missing, stale, invalid, insufficient, neutral, or conflicting higher-timeframe data blocks actionable signals and removes the risk plan. Confirmation is tied to the current symbol and selected interval. This is a conservative rule-based research gate, not a prediction or guarantee.
+The market-data API and backtesting endpoint use server-side environment configuration and should not return provider secrets to clients.
 
-Dedicated regression coverage is in `tests/multi-timeframe.test.ts`.
+## Signal and market-data rules
 
+- Validate OHLC values and chronological candle ordering before analysis.
+- Reject unexpected future timestamps and do not present stale candles as fresh.
+- Compute signals using only candles available at the decision time.
+- Use the selected timeframe's required higher-timeframe confirmations.
+- Block actionable signals when any required safety gate fails.
+- Treat stops, targets, sizing, and signal quality as estimates, not guarantees.
 
+### Higher-timeframe mapping
 
-Backtesting implementation notes
-- Research page: `/backtest`; server endpoint: `POST /api/backtest`.
-- The endpoint requests up to 1,000 historical candles for the selected interval and each required higher timeframe. It may consume multiple provider credits per run.
-- Current baseline strategy: EMA 50/200 trend alignment, RSI 14 band, ATR 14 stop/target distances, and required higher-timeframe trend alignment.
-- Risk sizing is a generic price-unit simulation. Confirm contract size, pip value, lot step, leverage, and fee conventions for each instrument before interpreting the absolute currency P/L.
-- The engine does not submit trades, and a profitable backtest does not establish a future edge.
+The `lib/multi-timeframe.ts` module defines the timeframe confirmation mapping. Its behavior is covered by `tests/multi-timeframe.test.ts`.
 
+## Backtesting methodology
 
-## Backtesting validation notes
+The backtesting engine is implemented in `lib/backtesting.ts`; its API is `POST /api/backtest`.
 
-- The backtest supports optional inclusive UTC `startDate` and `endDate` (`YYYY-MM-DD`). Both must be supplied together. Candles before `startDate` are indicator warm-up only and cannot trigger entries.
-- Historical requests ask the provider for up to 5,000 candles per timeframe. Always inspect the returned first/last test-candle timestamps and count; provider limits or market closures can mean a requested date range is not fully represented.
-- Signals are computed from the primary candle prefix available at that candle close (`signalTime` is the candle close timestamp) and entries are simulated at the next candle open. Higher-timeframe bars are only eligible after their opening timestamp plus interval duration.
-- If a stop is crossed by a gap at the next candle open, the simulation exits at the opening price before applying spread/slippage, instead of assuming a fill at the stop level. If stop and target are both touched intrabar, stop-loss-first remains the conservative assumption.
-- `Expectancy (R)` is mean net trade P/L divided by each trade's initial stop-distance risk amount. Costs may make realized loss exceed the planned risk.
-- This remains a bar-based simulation. It does not model order-book depth, variable spreads, swaps/funding, broker-specific contract sizing, partial fills, or all intrabar price paths. Do not interpret passing software tests as evidence of strategy profitability.
+- Signals are evaluated at candle close; simulated entries occur at the next candle open.
+- Higher-timeframe candles are eligible only after their full interval has closed by the decision timestamp.
+- ATR-based stop-loss and take-profit levels, maximum holding duration, spread, slippage, and per-side fees are configurable.
+- If a stop is crossed by a gap at the next candle open, the model uses the opening price before applying modeled execution costs.
+- If stop-loss and take-profit are both touched in the same candle and intrabar order is unknown, the engine assumes stop-loss first.
+- Date-range boundaries are interpreted as UTC calendar dates. Candles before the start date can warm up indicators but cannot trigger scored entries.
+- A trade must close within the selected test window. Inspect the returned first/last candle timestamps and candle count to assess provider coverage.
 
+### Metrics
 
-## Phase 5: out-of-sample validation
+- **Net P/L and return:** simulated account change after modeled trading costs.
+- **Win rate:** proportion of closed trades with positive net P/L.
+- **Profit factor:** gross winning net P/L divided by gross losing net P/L. A result with no losses is not proof of robustness.
+- **Expectancy (R):** average net P/L divided by the initial risk amount for each trade.
+- **Maximum drawdown:** largest peak-to-trough decline in the marked-to-market equity curve.
+- **Exposure:** portion of the scored period spent in an open position.
 
-The Backtesting Lab can optionally run a chronological 70/30 split over the scored history. Earlier candles are retained only as indicator and higher-timeframe warm-up; the scored in-sample and out-of-sample windows use precise candle timestamps and do not overlap. Each period is simulated independently from the configured initial balance.
+Risk sizing is a generic price-unit simulation. Before interpreting absolute currency P/L, confirm contract size, pip value, lot step, leverage, and fee conventions for each instrument.
 
-The holdout report compares net results, return, trade count, win rate, profit factor, expectancy in R, and maximum drawdown. It also shows a long-only price-only buy-and-hold reference and a zero-return no-trade baseline over the holdout window. This reference excludes transaction costs, financing, dividends, and instrument-specific contract sizing and should not be treated as a perfectly matched benchmark.
+## Out-of-sample validation
 
-**Research discipline:** do not tune strategy rules or configuration after inspecting the out-of-sample results and then continue to describe that same period as an untouched holdout. If the holdout informs a strategy change, reserve a new later period for independent validation. Results are historical simulations, not forecasts or guarantees of profitability.
+The Backtesting Lab can split the scored history chronologically into a 70% in-sample period and a final 30% out-of-sample holdout. Earlier candles are retained only for indicator and higher-timeframe warm-up. The periods are scored independently from the configured initial balance.
+
+The holdout report includes returns, net P/L, trade count, win rate, profit factor, expectancy in `R`, and maximum drawdown. It also includes:
+
+- A long-only, price-only buy-and-hold reference.
+- A no-trade baseline with zero modeled return.
+
+The buy-and-hold reference does not fully match a leveraged or short-capable strategy: it excludes transaction costs, financing, dividends, and instrument-specific contract sizing.
+
+**Preserve the holdout.** Do not tune rules or settings after inspecting holdout results and then continue to call the same period an independent test. If holdout results influence a strategy change, reserve a later, untouched period for fresh validation.
+
+## Robustness analysis
+
+The robustness module (`lib/robustness-analysis.ts`) adds two research views to the Backtesting Lab.
+
+### Transaction-cost sensitivity
+
+The same input history is replayed with:
+
+1. Baseline configured spread, slippage, and fees.
+2. Those costs scaled to `1.5×`.
+3. Those costs scaled to `2×`.
+
+This helps assess whether apparent performance is fragile to higher modeled execution costs. It does not model variable spreads, order-book depth, swaps/funding, partial fills, or broker-specific contract rules.
+
+### Performance by heuristic market regime
+
+Closed trades are grouped by a simple historical price-action classification:
+
+- **Trending:** high directional efficiency.
+- **Ranging:** low directional efficiency.
+- **Mixed:** intermediate directional efficiency.
+- **High volatility:** recent absolute price changes exceed a heuristic threshold relative to the sample.
+
+The classification is descriptive and heuristic. It is not an official market-state label, a predictive feature, or a guarantee that the strategy behaves similarly in future conditions. Small trade counts should be treated as weak evidence; the UI includes warnings when the sample is limited.
+
+## Known limitations
+
+- Historical availability and request limits depend on the configured Twelve Data plan, symbol, interval, and market sessions.
+- The engine is bar-based and cannot reconstruct every intrabar price path.
+- It does not fully model order-book depth, variable spreads, swaps/funding, dividends, broker-specific contract sizing, partial fills, or latency.
+- The initial benchmark is a simplified reference and may not be economically comparable for all instruments.
+- Heuristic regime classifications can be unstable on short histories.
+- Passing software tests does not establish profitability, statistical significance, or live-trading readiness.
+- The application does not execute trades.
+
+## Security and trading safety
+
+- Keep provider and optional AI credentials server-side.
+- Never commit `.env.local` or API keys.
+- Do not create actionable signals from stale, malformed, conflicting, or insufficient data.
+- Verify API rate limits and provider quotas before running many backtests.
+- Inspect individual simulated trades and returned candle coverage before interpreting aggregate metrics.
+- Paper-test and independently validate strategies before considering any live use.
+
+## Development roadmap
+
+- [x] Market-data validation and freshness handling.
+- [x] EMA, RSI, ATR, and rule-based trend analysis.
+- [x] Multi-timeframe confirmation.
+- [x] Historical backtesting with configurable modeled costs.
+- [x] UTC date-range filtering and execution safeguards.
+- [x] Chronological out-of-sample validation and basic benchmark reporting.
+- [ ] Complete verification and merge of the robustness-analysis feature branch.
+- [ ] Add further property tests for no-look-ahead behavior, fills, and cost assumptions.
+- [ ] Add richer robustness studies and independent forward/paper testing.
+- [ ] Review persistence, user preferences, deployment, observability, and release hardening.
+
+---
+
+**Genius Trading Web is a research tool, not financial advice or an automated trading system.** All simulations are estimates based on historical data and explicit assumptions; future results may differ materially.
