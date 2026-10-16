@@ -213,6 +213,10 @@ Closed trades are grouped by a simple historical price-action classification:
 
 The classification is descriptive and heuristic. It is not an official market-state label, a predictive feature, or a guarantee that the strategy behaves similarly in future conditions. Small trade counts should be treated as weak evidence; the UI includes warnings when the sample is limited.
 
+## Advanced strategy research
+
+The Backtesting Lab includes descriptive trade-level diagnostics: average winning and losing trade, payoff ratio, per-trade-return Sharpe and Sortino ratios, longest win/loss streaks, and a BUY/SELL performance breakdown. The ratios are intentionally **not annualized** because trades are irregularly spaced in time. They are descriptive statistics, not statistical significance tests, and can be unstable with small samples. Directional breakdowns can invite overfitting; preserve an untouched out-of-sample period when changing rules.
+
 ## Known limitations
 
 - Historical availability and request limits depend on the configured Twelve Data plan, symbol, interval, and market sessions.
