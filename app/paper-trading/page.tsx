@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, RefreshCw, ShieldAlert, CircleDollarSign, Activity } from "lucide-react";
+import { ArrowLeft, RefreshCw, ShieldAlert, Activity } from "lucide-react";
 import { closePaperPosition, createPaperLedger, DEFAULT_PAPER_CONFIG, getPaperMetrics, markPaperPositions, openPaperPosition, PAPER_STORAGE_KEY, type PaperLedger, type PaperPosition, type PaperSide } from "@/lib/paper-trading";
 
 type Candle = { time: string; open: number; high: number; low: number; close: number };
