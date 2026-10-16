@@ -54,7 +54,7 @@ export default function BacktestPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<(BacktestResult & { validation?: OutOfSampleValidation; robustness?: RobustnessAnalysis }) | null>(null);
-  const [currentRunId, setCurrentRunId] = useState("");
+  const [currentRunId] = useState("");
   const [experiments, setExperiments] = useState<ExperimentSnapshot[]>([]);
   const [experimentsLoaded, setExperimentsLoaded] = useState(false);
   const [experimentMessage, setExperimentMessage] = useState("");
