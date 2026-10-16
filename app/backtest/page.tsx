@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import type { BacktestConfig, BacktestInterval, BacktestResult } from "@/lib/backtesting";
 import type { OutOfSampleValidation } from "@/lib/backtest-validation";
+import type { RobustnessAnalysis } from "@/lib/robustness-analysis";
 
 const intervals: { label: string; value: BacktestInterval }[] = [
   { label: "1 minute", value: "1min" },
@@ -42,7 +43,7 @@ export default function BacktestPage() {
   const [includeValidation, setIncludeValidation] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<(BacktestResult & { validation?: OutOfSampleValidation }) | null>(null);
+  const [result, setResult] = useState<(BacktestResult & { validation?: OutOfSampleValidation; robustness?: RobustnessAnalysis }) | null>(null);
 
   const equityData = useMemo(() => {
     if (!result?.equityCurve.length) return [];
@@ -133,6 +134,7 @@ export default function BacktestPage() {
           <Metric label="Exposure" value={percent(result.summary.exposurePercent)} detail={`${result.summary.candlesAnalyzed} candles analyzed`} />
         </section>
         {"validation" in result && result.validation && <ValidationPanel validation={result.validation} />}
+        {"robustness" in result && result.robustness && <RobustnessPanel analysis={result.robustness} />}
         {equityData.length > 1 && <section className="backtest-card backtest-chart-card"><div className="backtest-section-title"><h2>Equity curve</h2><span>Realized and marked-to-market equity</span></div><div className="backtest-chart"><ResponsiveContainer width="100%" height="100%"><LineChart data={equityData} margin={{ top: 10, right: 15, bottom: 0, left: 0 }}><CartesianGrid stroke="#26343d" strokeDasharray="4 4" /><XAxis dataKey="time" hide /><YAxis domain={["auto", "auto"]} tick={{ fill: "#82919b", fontSize: 10 }} width={75} tickFormatter={(value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 0 })} /><Tooltip contentStyle={{ background: "#101820", border: "1px solid #30404a", borderRadius: 8, color: "#edf3f5", fontSize: 12 }} formatter={(value) => [money(Number(value)), "Equity"]} /><Line type="monotone" dataKey="equity" stroke="#f18a53" dot={false} strokeWidth={2} isAnimationActive={false} /></LineChart></ResponsiveContainer></div></section>}
         <section className="backtest-card"><div className="backtest-section-title"><h2>Trade log</h2><span>{result.trades.length} trades · newest first</span></div>{result.trades.length ? <div className="backtest-table-wrap"><table className="backtest-table"><thead><tr><th>Direction</th><th>Entry</th><th>Exit</th><th>Entry price</th><th>Exit price</th><th>Net P/L</th><th>Exit reason</th></tr></thead><tbody>{[...result.trades].reverse().slice(0, 100).map((trade, index) => <tr key={`${trade.entryTime}-${index}`}><td><span className={`direction-tag ${trade.direction.toLowerCase()}`}>{trade.direction}</span></td><td>{new Date(trade.entryTime).toLocaleString()}</td><td>{new Date(trade.exitTime).toLocaleString()}</td><td>{trade.entryPrice.toFixed(5)}</td><td>{trade.exitPrice.toFixed(5)}</td><td className={trade.netPnl >= 0 ? "pnl-positive" : "pnl-negative"}>{trade.netPnl >= 0 ? "+" : "−"}{money(Math.abs(trade.netPnl))}</td><td>{trade.exitReason}</td></tr>)}</tbody></table></div> : <p className="backtest-empty">No trades met the strategy and higher-timeframe confirmation rules during this historical sample.</p>}
           <p className="backtest-table-note">Showing up to 100 most recent trades. The simulation assumes stop-loss is hit first when stop and target are both touched in the same candle.</p>
@@ -146,6 +148,22 @@ export default function BacktestPage() {
 
 function Metric({ label, value, detail, positive, negative }: { label: string; value: string; detail: string; positive?: boolean; negative?: boolean }) {
   return <div className="backtest-metric"><div className="backtest-metric-label">{label}</div><div className={`backtest-metric-value ${positive ? "positive" : ""} ${negative ? "negative" : ""}`}>{value}</div><div className="backtest-metric-detail">{detail}</div></div>;
+}
+
+function RobustnessPanel({ analysis }: { analysis: RobustnessAnalysis }) {
+  return <section className="backtest-card">
+    <div className="backtest-section-title"><h2>Robustness analysis</h2><span>Version {analysis.version}</span></div>
+    <h3>Trading-cost sensitivity</h3>
+    <p className="backtest-validation-intro">The same strategy is replayed with configured spread, slippage, and fees scaled by each scenario. This is a sensitivity check, not a forecast.</p>
+    <div className="backtest-table-wrap"><table className="backtest-table"><thead><tr><th>Scenario</th><th>Spread</th><th>Slippage</th><th>Fee / side</th><th>Net P/L</th><th>Return</th><th>Trades</th><th>Expectancy (R)</th></tr></thead><tbody>
+      {analysis.costSensitivity.map((scenario) => <tr key={scenario.label}><td>{scenario.label}</td><td>{scenario.spreadBps.toFixed(2)} bps</td><td>{scenario.slippageBps.toFixed(2)} bps</td><td>{scenario.feeBpsPerSide.toFixed(2)} bps</td><td className={scenario.netPnl >= 0 ? "pnl-positive" : "pnl-negative"}>{money(scenario.netPnl)}</td><td>{percent(scenario.returnPercent)}</td><td>{scenario.trades}</td><td>{scenario.expectancyR.toFixed(2)}R</td></tr>)}
+    </tbody></table></div>
+    <h3>Performance by heuristic market regime</h3>
+    {analysis.regimePerformance.length ? <div className="backtest-table-wrap"><table className="backtest-table"><thead><tr><th>Regime</th><th>Trades</th><th>Wins</th><th>Win rate</th><th>Net P/L</th><th>Expectancy (R)</th></tr></thead><tbody>
+      {analysis.regimePerformance.map((item) => <tr key={item.regime}><td>{item.regime}</td><td>{item.trades}</td><td>{item.wins}</td><td>{percent(item.winRatePercent)}</td><td className={item.netPnl >= 0 ? "pnl-positive" : "pnl-negative"}>{money(item.netPnl)}</td><td>{item.expectancyR.toFixed(2)}R</td></tr>)}
+    </tbody></table></div> : <p className="backtest-empty">No closed trades available for regime breakdown.</p>}
+    <ul>{analysis.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+  </section>;
 }
 
 function ValidationPanel({ validation }: { validation: OutOfSampleValidation }) {

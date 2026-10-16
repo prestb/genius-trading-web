@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runBacktest, type BacktestConfig, type BacktestInterval } from "@/lib/backtesting";
 import { runOutOfSampleValidation } from "@/lib/backtest-validation";
+import { analyzeRobustness } from "@/lib/robustness-analysis";
 import { getRequiredHigherTimeframes } from "@/lib/multi-timeframe";
 import { isValidCandle } from "@/lib/market-validation";
 
@@ -133,7 +134,8 @@ export async function POST(request: NextRequest) {
     const validation = body.includeValidation === true
       ? runOutOfSampleValidation(backtestInput)
       : undefined;
-    return NextResponse.json({ ...result, ...(validation ? { validation } : {}) }, {
+    const robustness = result.status === "completed" ? analyzeRobustness(backtestInput, result) : undefined;
+    return NextResponse.json({ ...result, ...(validation ? { validation } : {}), ...(robustness ? { robustness } : {}) }, {
       headers: { "Cache-Control": "no-store, max-age=0" },
     });
   } catch (error) {
