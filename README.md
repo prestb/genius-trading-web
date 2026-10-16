@@ -16,7 +16,7 @@ A personal-use, multi-market trading research dashboard built with **Next.js**, 
 - [Signal and market-data rules](#signal-and-market-data-rules)
 - [Backtesting methodology](#backtesting-methodology)
 - [Out-of-sample validation](#out-of-sample-validation)
-- [Robustness analysis](#robustness-analysis)
+- [Robustness analysis](#robustness-analysis)\n- [Trade audit and CSV export](#trade-audit-and-csv-export)
 - [Known limitations](#known-limitations)
 - [Security and trading safety](#security-and-trading-safety)
 - [Development roadmap](#development-roadmap)
