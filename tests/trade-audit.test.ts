@@ -34,7 +34,7 @@ describe("trade audit CSV", () => {
     const csv = tradesToAuditCsv([trade], metadata);
     expect(csv.split("\\r\\n")).toHaveLength(2);
     expect(csv).toContain("symbol,interval,engineVersion");
-    expect(csv).toContain("EUR/USD,15min,1.1.0");
+    expect(csv).toContain('EUR/USD,"15min",1.1.0');
     expect(csv).toContain("take-profit");
     expect(csv).toContain("2025-01-01T10:00:00.000Z");
   });
