@@ -48,6 +48,7 @@ const result = {
   },
   trades: [],
   equityCurve: [],
+  warnings: [],
 } as BacktestResult;
 
 function experiment(id: string): ExperimentSnapshot {

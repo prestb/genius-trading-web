@@ -15,6 +15,7 @@ import {
 import type { BacktestConfig, BacktestInterval, BacktestResult } from "@/lib/backtesting";
 import type { OutOfSampleValidation } from "@/lib/backtest-validation";
 import type { RobustnessAnalysis } from "@/lib/robustness-analysis";
+import { analyzeStrategyResearch } from "@/lib/strategy-research";
 import { tradesToAuditCsv } from "@/lib/trade-audit";
 import {
   addExperiment,
@@ -230,6 +231,7 @@ export default function BacktestPage() {
           <Metric label="Expectancy (R)" value={`${result.summary.expectancyR.toFixed(2)}R`} detail="Average net P/L divided by initial stop risk" positive={result.summary.expectancyR >= 0} />
           <Metric label="Exposure" value={percent(result.summary.exposurePercent)} detail={`${result.summary.candlesAnalyzed} candles analyzed`} />
         </section>
+        <StrategyResearchPanel analysis={analyzeStrategyResearch(result)} money={money} percent={percent} />
         {"validation" in result && result.validation && <ValidationPanel validation={result.validation} />}
         {"robustness" in result && result.robustness && <RobustnessPanel analysis={result.robustness} />}
         {equityData.length > 1 && <section className="backtest-card backtest-chart-card"><div className="backtest-section-title"><h2>Equity curve</h2><span>Realized and marked-to-market equity</span></div><div className="backtest-chart"><ResponsiveContainer width="100%" height="100%"><LineChart data={equityData} margin={{ top: 10, right: 15, bottom: 0, left: 0 }}><CartesianGrid stroke="#26343d" strokeDasharray="4 4" /><XAxis dataKey="time" hide /><YAxis domain={["auto", "auto"]} tick={{ fill: "#82919b", fontSize: 10 }} width={75} tickFormatter={(value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 0 })} /><Tooltip contentStyle={{ background: "#101820", border: "1px solid #30404a", borderRadius: 8, color: "#edf3f5", fontSize: 12 }} formatter={(value) => [money(Number(value)), "Equity"]} /><Line type="monotone" dataKey="equity" stroke="#f18a53" dot={false} strokeWidth={2} isAnimationActive={false} /></LineChart></ResponsiveContainer></div></section>}
@@ -245,6 +247,28 @@ export default function BacktestPage() {
 
 function Metric({ label, value, detail, positive, negative }: { label: string; value: string; detail: string; positive?: boolean; negative?: boolean }) {
   return <div className="backtest-metric"><div className="backtest-metric-label">{label}</div><div className={`backtest-metric-value ${positive ? "positive" : ""} ${negative ? "negative" : ""}`}>{value}</div><div className="backtest-metric-detail">{detail}</div></div>;
+}
+
+function StrategyResearchPanel({ analysis, money, percent }: { analysis: ReturnType<typeof analyzeStrategyResearch>; money: (value: number) => string; percent: (value: number) => string }) {
+  const ratio = (value: number | null) => value === null || !Number.isFinite(value) ? "—" : value.toFixed(2);
+  return <section className="backtest-card">
+    <div className="backtest-section-title"><h2>Advanced strategy research</h2><span>Diagnostics v{analysis.version} · {analysis.tradeCount} trades</span></div>
+    <p className="backtest-validation-intro">Descriptive diagnostics for this historical sample. Use these to investigate behavior, not as standalone strategy-selection rules.</p>
+    <div className="backtest-metrics">
+      <Metric label="Average winning trade" value={money(analysis.averageWin)} detail="Mean positive net P/L" positive={analysis.averageWin > 0} />
+      <Metric label="Average losing trade" value={analysis.averageLoss ? `−${money(analysis.averageLoss)}` : "—"} detail="Mean absolute negative net P/L" />
+      <Metric label="Payoff ratio" value={ratio(analysis.payoffRatio)} detail="Average win ÷ average loss" />
+      <Metric label="Trade-return Sharpe" value={ratio(analysis.tradeReturnSharpe)} detail="Unannualized; per-trade returns" />
+      <Metric label="Trade-return Sortino" value={ratio(analysis.tradeReturnSortino)} detail="Unannualized; downside deviation" />
+      <Metric label="Longest win streak" value={String(analysis.maxConsecutiveWins)} detail="Consecutive profitable closed trades" positive={analysis.maxConsecutiveWins > 0} />
+      <Metric label="Longest loss streak" value={String(analysis.maxConsecutiveLosses)} detail="Consecutive losing closed trades" negative={analysis.maxConsecutiveLosses >= 3} />
+    </div>
+    <h3>Performance by direction</h3>
+    {analysis.directionBreakdown.length ? <div className="backtest-table-wrap"><table className="backtest-table"><thead><tr><th>Direction</th><th>Trades</th><th>Wins</th><th>Win rate</th><th>Net P/L</th><th>Expectancy (R)</th><th>Profit factor</th></tr></thead><tbody>
+      {analysis.directionBreakdown.map((item) => <tr key={item.direction}><td>{item.direction}</td><td>{item.trades}</td><td>{item.wins}</td><td>{percent(item.winRatePercent)}</td><td className={item.netPnl >= 0 ? "pnl-positive" : "pnl-negative"}>{money(item.netPnl)}</td><td>{item.expectancyR.toFixed(2)}R</td><td>{item.profitFactor === null ? "∞*" : item.profitFactor.toFixed(2)}</td></tr>)}
+    </tbody></table></div> : <p className="backtest-empty">No closed trades to break down by direction.</p>}
+    <ul className="backtest-validation-warnings">{analysis.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+  </section>;
 }
 
 function RobustnessPanel({ analysis }: { analysis: RobustnessAnalysis }) {
