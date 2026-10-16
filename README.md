@@ -16,7 +16,10 @@ A personal-use, multi-market trading research dashboard built with **Next.js**, 
 - [Signal and market-data rules](#signal-and-market-data-rules)
 - [Backtesting methodology](#backtesting-methodology)
 - [Out-of-sample validation](#out-of-sample-validation)
-- [Robustness analysis](#robustness-analysis)\n- [Trade audit and CSV export](#trade-audit-and-csv-export)
+- [Robustness analysis](#robustness-analysis)
+- [Trade audit and CSV export](#trade-audit-and-csv-export)
+- [Advanced strategy research](#advanced-strategy-research)
+- [Portfolio analysis](#portfolio-analysis)
 - [Known limitations](#known-limitations)
 - [Security and trading safety](#security-and-trading-safety)
 - [Development roadmap](#development-roadmap)
@@ -217,6 +220,13 @@ The classification is descriptive and heuristic. It is not an official market-st
 
 The Backtesting Lab includes descriptive trade-level diagnostics: average winning and losing trade, payoff ratio, per-trade-return Sharpe and Sortino ratios, longest win/loss streaks, and a BUY/SELL performance breakdown. The ratios are intentionally **not annualized** because trades are irregularly spaced in time. They are descriptive statistics, not statistical significance tests, and can be unstable with small samples. Directional breakdowns can invite overfitting; preserve an untouched out-of-sample period when changing rules.
 
+
+## Portfolio analysis
+
+The Backtesting Lab supports a session-local portfolio made from completed backtest runs. Add each completed run to the portfolio, then compare combined starting capital, combined equity, net P/L, portfolio drawdown, and pairwise return correlations where timestamps overlap. You can remove individual runs or clear the portfolio. The portfolio selection is held in page memory and is not persisted between sessions.
+
+Each component contributes its own configured starting balance and equity curve. Curves are aligned by timestamp with the latest known component equity carried forward between observations. Different timeframes therefore produce approximate rather than synchronized alignment. Correlations require at least three shared return observations and non-zero variation. The analysis does not model shared margin, leverage interactions, financing, dividends, instrument contract sizing, or currency conversion; treat it as a research diagnostic rather than an execution-grade portfolio simulator.
+
 ## Known limitations
 
 - Historical availability and request limits depend on the configured Twelve Data plan, symbol, interval, and market sessions.
@@ -225,6 +235,7 @@ The Backtesting Lab includes descriptive trade-level diagnostics: average winnin
 - The initial benchmark is a simplified reference and may not be economically comparable for all instruments.
 - Heuristic regime classifications can be unstable on short histories.
 - Passing software tests does not establish profitability, statistical significance, or live-trading readiness.
+- Portfolio aggregation is a simplified sum of independently simulated equity curves and does not model shared margin or cross-currency conversion.
 - The application does not execute trades.
 
 ## Security and trading safety

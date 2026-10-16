@@ -16,6 +16,7 @@ import type { BacktestConfig, BacktestInterval, BacktestResult } from "@/lib/bac
 import type { OutOfSampleValidation } from "@/lib/backtest-validation";
 import type { RobustnessAnalysis } from "@/lib/robustness-analysis";
 import { analyzeStrategyResearch } from "@/lib/strategy-research";
+import { analyzePortfolio, type PortfolioComponent } from "@/lib/portfolio-analysis";
 import { tradesToAuditCsv } from "@/lib/trade-audit";
 import {
   addExperiment,
@@ -57,6 +58,8 @@ export default function BacktestPage() {
   const [experiments, setExperiments] = useState<ExperimentSnapshot[]>([]);
   const [experimentsLoaded, setExperimentsLoaded] = useState(false);
   const [experimentMessage, setExperimentMessage] = useState("");
+  const [portfolioComponents, setPortfolioComponents] = useState<PortfolioComponent[]>([]);
+  const portfolioAnalysis = useMemo(() => analyzePortfolio(portfolioComponents), [portfolioComponents]);
 
   useEffect(() => {
     try {
@@ -207,6 +210,7 @@ export default function BacktestPage() {
           <p className="backtest-period-detail">Run ID: <code>{currentRunId || "—"}</code>. The snapshot records the engine version, all execution settings, requested and actual data windows, validation status, and headline metrics.</p>
           <div className="backtest-audit-actions">
             <button type="button" className="backtest-run-button" onClick={saveExperiment} disabled={!currentRunId}>Save experiment snapshot</button>
+            <button type="button" className="backtest-run-button" onClick={() => { const id = `${result.symbol}-${result.interval}-${result.period.firstCandleAt ?? "unknown"}-${result.period.lastCandleAt ?? "unknown"}`; setPortfolioComponents((current) => [...current.filter((item) => item.id !== id), { id, result }]); }} disabled={result.status !== "completed" || !result.equityCurve.length}>Add run to portfolio</button>
             <span>Saved records stay in this browser and are limited to the 25 most recent. Export JSON to back them up.</span>
           </div>
           {experimentMessage && <p className="backtest-table-note" role="status">{experimentMessage}</p>}
@@ -240,6 +244,20 @@ export default function BacktestPage() {
         </section>
         <section className="backtest-card backtest-warnings"><div className="backtest-section-title"><h2>Interpretation & limitations</h2></div><ul>{result.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul><p>* Profit factor is shown as ∞ when there are profitable trades and no losing trades in this sample; this is not proof of a robust strategy.</p></section>
       </>}
+      <section className="backtest-card">
+        <div className="backtest-section-title"><h2>Portfolio analysis</h2><span>Phase 10 · {portfolioComponents.length} run(s) selected</span></div>
+        <p className="backtest-validation-intro">Run a backtest, then choose “Add run to portfolio.” Add other instruments/timeframes by running another backtest and adding it too. Components are held in this page session only.</p>
+        {portfolioComponents.length > 0 && <div className="backtest-table-wrap"><table className="backtest-table"><thead><tr><th>Instrument</th><th>Timeframe</th><th>Starting capital</th><th>Run return</th><th>Action</th></tr></thead><tbody>{portfolioComponents.map((item) => <tr key={item.id}><td>{item.result.symbol}</td><td>{item.result.interval}</td><td>{money(item.result.config.initialBalance)}</td><td>{percent(item.result.summary.returnPercent)}</td><td><button type="button" className="backtest-run-button" onClick={() => setPortfolioComponents((current) => current.filter((candidate) => candidate.id !== item.id))}>Remove</button></td></tr>)}</tbody></table></div>}
+        <div className="backtest-metrics">
+          <Metric label="Components" value={String(portfolioAnalysis.components)} detail="Completed backtests included" />
+          <Metric label="Initial capital" value={money(portfolioAnalysis.initialCapital)} detail="Sum of component starting balances" />
+          <Metric label="Combined net P/L" value={`${portfolioAnalysis.netPnl >= 0 ? "+" : "−"}${money(Math.abs(portfolioAnalysis.netPnl))}`} detail={`${percent(portfolioAnalysis.returnPercent)} combined return`} positive={portfolioAnalysis.netPnl >= 0} negative={portfolioAnalysis.netPnl < 0} />
+          <Metric label="Portfolio max drawdown" value={percent(portfolioAnalysis.maxDrawdownPercent)} detail="Calculated from combined equity" negative={portfolioAnalysis.maxDrawdownPercent > 15} />
+        </div>
+        {portfolioAnalysis.correlations.length > 0 && <><h3>Pairwise return correlation</h3><div className="backtest-table-wrap"><table className="backtest-table"><thead><tr><th>Component A</th><th>Component B</th><th>Correlation</th><th>Shared observations</th></tr></thead><tbody>{portfolioAnalysis.correlations.map((item) => <tr key={`${item.left}-${item.right}`}><td>{item.left}</td><td>{item.right}</td><td>{item.correlation === null ? "—" : item.correlation.toFixed(2)}</td><td>{item.observations}</td></tr>)}</tbody></table></div></>}
+        <ul className="backtest-validation-warnings">{portfolioAnalysis.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+        <div className="backtest-audit-actions"><button type="button" className="backtest-run-button" onClick={() => setPortfolioComponents([])} disabled={!portfolioComponents.length}>Clear portfolio</button><span>Analysis only; no live orders, shared margin model, financing, or currency conversion.</span></div>
+      </section>
       <footer className="backtest-footer">GENIUS TRADING INTELLIGENCE <span>RESEARCH TOOL · DOES NOT EXECUTE TRADES</span></footer>
     </main>
   );
