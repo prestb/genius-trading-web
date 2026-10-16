@@ -20,6 +20,7 @@ A personal-use, multi-market trading research dashboard built with **Next.js**, 
 - [Trade audit and CSV export](#trade-audit-and-csv-export)
 - [Advanced strategy research](#advanced-strategy-research)
 - [Portfolio analysis](#portfolio-analysis)
+- [Paper trading](#paper-trading)
 - [Known limitations](#known-limitations)
 - [Security and trading safety](#security-and-trading-safety)
 - [Development roadmap](#development-roadmap)
@@ -131,6 +132,7 @@ npm run build
 | --- | --- |
 | `/` | Market dashboard and rule-based analysis |
 | `/backtest` | Historical backtesting, performance metrics, trade log, validation, and robustness reports |
+| `/paper-trading` | Simulation-only manual paper positions, modeled execution costs, risk guardrails, and local ledger |
 | `/api/market` | Validated market-data retrieval; see `app/api/market/route.ts` for supported methods |
 | `POST /api/backtest` | Historical data retrieval and backtest, validation, and robustness results |
 
@@ -226,6 +228,16 @@ The Backtesting Lab includes descriptive trade-level diagnostics: average winnin
 The Backtesting Lab supports a session-local portfolio made from completed backtest runs. Add each completed run to the portfolio, then compare combined starting capital, combined equity, net P/L, portfolio drawdown, and pairwise return correlations where timestamps overlap. You can remove individual runs or clear the portfolio. The portfolio selection is held in page memory and is not persisted between sessions.
 
 Each component contributes its own configured starting balance and equity curve. Curves are aligned by timestamp with the latest known component equity carried forward between observations. Different timeframes therefore produce approximate rather than synchronized alignment. Correlations require at least three shared return observations and non-zero variation. The analysis does not model shared margin, leverage interactions, financing, dividends, instrument contract sizing, or currency conversion; treat it as a research diagnostic rather than an execution-grade portfolio simulator.
+
+## Paper trading
+
+The `/paper-trading` route provides a **simulation-only** manual paper ledger. It uses the existing server-side `/api/market` endpoint and permits opening/closing simulated positions only when the provider marks the latest candle fresh. The page does not connect to a broker, transmit orders, or place real-money trades.
+
+- Simulated LONG/SHORT positions, marked P/L, realized P/L, equity, and JSON ledger export.
+- Configured spread, slippage, and per-side fees are modeled adversely at entry/exit. These are simplified assumptions and do not model contract multipliers, financing, funding, margin, partial fills, or exchange-specific rules.
+- Duplicate same-symbol/same-side positions, maximum open positions, insufficient simulated available balance, and the daily realized-loss threshold are guarded in the simulation module.
+- The ledger is stored in browser local storage on this device/browser only; it is not synchronized or encrypted. Export backups if you need to preserve it.
+- Market prices refresh manually to avoid excessive provider requests. Provider freshness is not a guarantee of real-time data or execution quality.
 
 ## Known limitations
 
