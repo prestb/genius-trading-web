@@ -20,7 +20,7 @@ A personal-use, multi-market trading research dashboard built with **Next.js**, 
 - [Trade audit and CSV export](#trade-audit-and-csv-export)
 - [Advanced strategy research](#advanced-strategy-research)
 - [Portfolio analysis](#portfolio-analysis)
-- [Paper trading](#paper-trading)
+- [Paper trading](#paper-trading)\n- [Live-trading readiness](#live-trading-readiness)
 - [Known limitations](#known-limitations)
 - [Security and trading safety](#security-and-trading-safety)
 - [Development roadmap](#development-roadmap)
@@ -132,7 +132,7 @@ npm run build
 | --- | --- |
 | `/` | Market dashboard and rule-based analysis |
 | `/backtest` | Historical backtesting, performance metrics, trade log, validation, and robustness reports |
-| `/paper-trading` | Simulation-only manual paper positions, modeled execution costs, risk guardrails, and local ledger |
+| `/paper-trading` | Simulation-only manual paper positions, modeled execution costs, risk guardrails, and local ledger |\n| `/live-trading-readiness` | Readiness checklist only; live execution is disabled and no broker orders are submitted |\n| `GET /api/trading/readiness` | Returns capability/readiness metadata only; never submits orders |
 | `/api/market` | Validated market-data retrieval; see `app/api/market/route.ts` for supported methods |
 | `POST /api/backtest` | Historical data retrieval and backtest, validation, and robustness results |
 
@@ -238,6 +238,12 @@ The `/paper-trading` route provides a **simulation-only** manual paper ledger. I
 - Duplicate same-symbol/same-side positions, maximum open positions, insufficient simulated available balance, and the daily realized-loss threshold are guarded in the simulation module.
 - The ledger is stored in browser local storage on this device/browser only; it is not synchronized or encrypted. Export backups if you need to preserve it.
 - Market prices refresh manually to avoid excessive provider requests. Provider freshness is not a guarantee of real-time data or execution quality.
+
+## Live-trading readiness
+
+The `/live-trading-readiness` page is a safety checklist, not a broker integration. `GET /api/trading/readiness` reports that live execution is disabled and that no broker adapter is implemented. The `lib/live-trading-readiness.ts` module includes a pure order-preflight validator for future use; it does not send orders or establish a broker session.
+
+Before any live integration, implement a supported broker adapter, server-only secret management, persistent idempotency and audit logs, server-enforced risk limits, complete order lifecycle handling, reconciliation, an emergency stop, and sandbox/recovery tests. Browser-local paper-trading controls are not suitable for live risk enforcement. Never expose broker credentials to client code or enable live execution based only on this checklist.
 
 ## Known limitations
 

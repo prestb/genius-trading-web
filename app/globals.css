@@ -19,3 +19,18 @@
 
 /* Phase 11: simulation-only paper trading */
 .paper-safety{display:flex;gap:12px;align-items:flex-start;border:1px solid #60472f;background:#241b14;color:#e7b58e;border-radius:10px;padding:14px 16px;margin:0 0 17px}.paper-safety svg{flex-shrink:0;margin-top:2px}.paper-safety div{display:grid;gap:5px}.paper-safety strong{font-size:12px}.paper-safety span{font-size:10px;line-height:1.7;color:#c5aa94}.paper-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}.paper-form-grid select{width:100%;min-width:0;border:1px solid #2a3943;background:#0a1117;color:#e9eff2;border-radius:7px;padding:11px 10px;font-size:12px}.paper-market-status{display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:#82919b;font-size:10px;margin-top:15px}.paper-status-dot{width:7px;height:7px;border-radius:50%;background:#e3a15e;display:inline-block}.paper-status-dot.fresh{background:#55d6a2}.paper-order-actions{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-top:17px;padding-top:16px;border-top:1px solid #202c35}.paper-order-actions>div{display:flex;gap:8px;flex-wrap:wrap}.paper-order-actions button,.paper-ledger-actions button,.paper-close{display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:7px;padding:9px 11px;font-size:10px;font-weight:700}.paper-order-actions button:disabled{opacity:.45;cursor:not-allowed}.paper-long{border:1px solid #28664e;background:#173a2d;color:#7de0b7}.paper-short{border:1px solid #72383e;background:#3a2025;color:#f18b91}.paper-ledger-actions{display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap}.paper-close{border:1px solid #59402e;background:#2a1e17;color:#f1b48c;padding:6px 8px}.paper-message{border:1px solid #285340;background:#142b22;color:#8fe2bf;padding:12px 14px;border-radius:8px;margin:14px 0;font-size:11px;line-height:1.6}.paper-table{min-width:960px}@media(max-width:720px){.paper-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.paper-order-actions{align-items:stretch;flex-direction:column}.paper-order-actions>button,.paper-order-actions>div{width:100%}.paper-order-actions>div button{flex:1}.paper-market-status{align-items:flex-start;flex-direction:column}}
+
+
+/* Phase 12: live-trading readiness checklist */
+.readiness-check-list { display: grid; gap: 0; }
+.readiness-check { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 18px 0; border-bottom: 1px solid var(--border, rgba(148, 163, 184, .18)); }
+.readiness-check:last-child { border-bottom: 0; }
+.readiness-check-icon { color: var(--muted, #94a3b8); padding-top: 2px; }
+.readiness-check h3 { margin: 0 0 6px; font-size: 14px; font-weight: 650; }
+.readiness-check p { margin: 0; color: var(--muted, #94a3b8); font-size: 13px; line-height: 1.55; }
+.readiness-status { align-self: start; border: 1px solid currentColor; border-radius: 999px; padding: 3px 9px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.readiness-status.complete { color: #22c55e; }
+.readiness-status.incomplete { color: #f59e0b; }
+.readiness-status.blocked { color: #ef4444; }
+.readiness-sequence { margin: 0; padding-left: 22px; display: grid; gap: 12px; color: var(--muted, #94a3b8); line-height: 1.6; }
+@media (max-width: 600px) { .readiness-check { grid-template-columns: 24px minmax(0, 1fr); } .readiness-status { grid-column: 2; } }

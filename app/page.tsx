@@ -579,6 +579,7 @@ export default function Home() {
             </button>
           ))}
           <Link href="/paper-trading" className="nav-item"><Activity size={15} />Paper Trading</Link>
+          <Link href="/live-trading-readiness" className="nav-item"><ShieldCheck size={15} />Live-Trading Readiness</Link>
             <Link href="/backtest" className="nav-item">
             <FlaskConical size={17} />
             <span>Backtesting Lab</span>
