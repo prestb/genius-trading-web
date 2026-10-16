@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runBacktest, type BacktestConfig, type BacktestInterval } from "@/lib/backtesting";
+import { runOutOfSampleValidation } from "@/lib/backtest-validation";
 import { getRequiredHigherTimeframes } from "@/lib/multi-timeframe";
 import { isValidCandle } from "@/lib/market-validation";
 
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Market data is not configured on the server." }, { status: 503 });
   }
 
-  let body: { symbol?: unknown; interval?: unknown; startDate?: unknown; endDate?: unknown; config?: Partial<BacktestConfig> };
+  let body: { symbol?: unknown; interval?: unknown; startDate?: unknown; endDate?: unknown; includeValidation?: unknown; config?: Partial<BacktestConfig> };
   try {
     body = await request.json();
   } catch {
@@ -79,9 +80,8 @@ export async function POST(request: NextRequest) {
   if (!allowedIntervals.has(interval as BacktestInterval)) {
     return NextResponse.json({ error: "Unsupported backtest interval." }, { status: 400 });
   }
-  if ((body.startDate !== undefined && body.startDate !== "" && typeof body.startDate !== "string") ||
-      (body.endDate !== undefined && body.endDate !== "" && typeof body.endDate !== "string")) {
-    return NextResponse.json({ error: "startDate and endDate must be date strings." }, { status: 400 });
+  if (body.includeValidation !== undefined && typeof body.includeValidation !== "boolean") {
+    return NextResponse.json({ error: "includeValidation must be a boolean." }, { status: 400 });
   }
   if ((body.startDate !== undefined && body.startDate !== "" && typeof body.startDate !== "string") ||
       (body.endDate !== undefined && body.endDate !== "" && typeof body.endDate !== "string")) {
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     requiredIntervals.forEach((frameInterval, index) => {
       higherTimeframeCandles[frameInterval] = histories[index + 1]!;
     });
-    const result = runBacktest({
+    const backtestInput = {
       symbol,
       interval: interval as BacktestInterval,
       candles: histories[0]!,
@@ -128,8 +128,12 @@ export async function POST(request: NextRequest) {
       config: body.config,
       startDate,
       endDate,
-    });
-    return NextResponse.json(result, {
+    };
+    const result = runBacktest(backtestInput);
+    const validation = body.includeValidation === true
+      ? runOutOfSampleValidation(backtestInput)
+      : undefined;
+    return NextResponse.json({ ...result, ...(validation ? { validation } : {}) }, {
       headers: { "Cache-Control": "no-store, max-age=0" },
     });
   } catch (error) {

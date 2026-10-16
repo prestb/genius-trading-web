@@ -154,3 +154,25 @@ describe("runBacktest", () => {
   });
 
 });
+
+  it("closes any open trade at the selected test-window end instead of using later candles", () => {
+    const candles = makeCandles(500, 60, Date.parse("2025-01-01T00:00:00.000Z"));
+    const endTime = candles[349]!.time;
+    const result = runBacktest(validInput({
+      candles,
+      testStartTime: candles[250]!.time,
+      testEndTime: endTime,
+      config: { maxCandlesInTrade: 10000 },
+    }));
+    expect(result.period.lastCandleAt).toBe(endTime);
+    expect(result.trades.every((trade) => Date.parse(trade.exitTime) <= Date.parse(endTime))).toBe(true);
+  });
+
+  it("rejects overlapping calendar and precise timestamp bounds", () => {
+    const candles = makeCandles(450, 60);
+    expect(() => runBacktest(validInput({
+      candles,
+      startDate: "2025-01-01",
+      testStartTime: candles[250]!.time,
+    }))).toThrow(/either calendar date bounds or precise test timestamps/);
+  });

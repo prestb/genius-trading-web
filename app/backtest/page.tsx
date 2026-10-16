@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import type { BacktestConfig, BacktestInterval, BacktestResult } from "@/lib/backtesting";
+import type { OutOfSampleValidation } from "@/lib/backtest-validation";
 
 const intervals: { label: string; value: BacktestInterval }[] = [
   { label: "1 minute", value: "1min" },
@@ -38,9 +39,10 @@ export default function BacktestPage() {
   const [maxCandlesInTrade, setMaxCandlesInTrade] = useState("100");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [includeValidation, setIncludeValidation] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState<BacktestResult | null>(null);
+  const [result, setResult] = useState<(BacktestResult & { validation?: OutOfSampleValidation }) | null>(null);
 
   const equityData = useMemo(() => {
     if (!result?.equityCurve.length) return [];
@@ -76,11 +78,11 @@ export default function BacktestPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({ symbol, interval, startDate: startDate || undefined, endDate: endDate || undefined, config }),
+        body: JSON.stringify({ symbol, interval, startDate: startDate || undefined, endDate: endDate || undefined, config, includeValidation }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Backtest request failed.");
-      setResult(data as BacktestResult);
+      setResult(data as BacktestResult & { validation?: OutOfSampleValidation });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Backtest could not be completed.");
     } finally {
@@ -95,7 +97,7 @@ export default function BacktestPage() {
         <span className="backtest-version"><FlaskConical size={14} /> HISTORICAL RESEARCH</span>
       </div>
       <header className="backtest-heading">
-        <div className="backtest-eyebrow">PHASE 3 · STRATEGY VALIDATION</div>
+        <div className="backtest-eyebrow">PHASE 5 · OUT-OF-SAMPLE VALIDATION</div>
         <h1>Backtesting <span>Lab</span></h1>
         <p>Replay historical candles with higher-timeframe confirmation and explicit trading-cost assumptions.</p>
       </header>
@@ -114,6 +116,7 @@ export default function BacktestPage() {
           <label>Fee per side (basis points)<input inputMode="decimal" type="number" min="0" max="1000" step="0.1" value={feeBpsPerSide} onChange={(event) => setFeeBpsPerSide(event.target.value)} /></label>
           <label>Maximum bars per trade<input inputMode="numeric" type="number" min="1" max="10000" step="1" value={maxCandlesInTrade} onChange={(event) => setMaxCandlesInTrade(event.target.value)} /></label>
         </div>
+        <div className="backtest-validation-option"><label><input type="checkbox" checked={includeValidation} onChange={(event) => setIncludeValidation(event.target.checked)} /><span><strong>Run out-of-sample validation</strong><small>Use the first 70% of the scored history for in-sample research and the final 30% as a chronological holdout. Includes a price-only buy-and-hold benchmark.</small></span></label></div>
         <div className="backtest-actions"><p>Leave both dates blank for the latest available history, or select both dates for a historical period. Pre-period candles are used only to warm up indicators. Provider history limits apply.</p><button className="primary-button" onClick={run} disabled={loading}>{loading ? <span className="backtest-spinner" /> : <Play size={15} />}{loading ? "Running simulation…" : "Run backtest"}</button></div>
       </section>
 
@@ -129,6 +132,7 @@ export default function BacktestPage() {
           <Metric label="Expectancy (R)" value={`${result.summary.expectancyR.toFixed(2)}R`} detail="Average net P/L divided by initial stop risk" positive={result.summary.expectancyR >= 0} />
           <Metric label="Exposure" value={percent(result.summary.exposurePercent)} detail={`${result.summary.candlesAnalyzed} candles analyzed`} />
         </section>
+        {"validation" in result && result.validation && <ValidationPanel validation={result.validation} />}
         {equityData.length > 1 && <section className="backtest-card backtest-chart-card"><div className="backtest-section-title"><h2>Equity curve</h2><span>Realized and marked-to-market equity</span></div><div className="backtest-chart"><ResponsiveContainer width="100%" height="100%"><LineChart data={equityData} margin={{ top: 10, right: 15, bottom: 0, left: 0 }}><CartesianGrid stroke="#26343d" strokeDasharray="4 4" /><XAxis dataKey="time" hide /><YAxis domain={["auto", "auto"]} tick={{ fill: "#82919b", fontSize: 10 }} width={75} tickFormatter={(value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 0 })} /><Tooltip contentStyle={{ background: "#101820", border: "1px solid #30404a", borderRadius: 8, color: "#edf3f5", fontSize: 12 }} formatter={(value) => [money(Number(value)), "Equity"]} /><Line type="monotone" dataKey="equity" stroke="#f18a53" dot={false} strokeWidth={2} isAnimationActive={false} /></LineChart></ResponsiveContainer></div></section>}
         <section className="backtest-card"><div className="backtest-section-title"><h2>Trade log</h2><span>{result.trades.length} trades · newest first</span></div>{result.trades.length ? <div className="backtest-table-wrap"><table className="backtest-table"><thead><tr><th>Direction</th><th>Entry</th><th>Exit</th><th>Entry price</th><th>Exit price</th><th>Net P/L</th><th>Exit reason</th></tr></thead><tbody>{[...result.trades].reverse().slice(0, 100).map((trade, index) => <tr key={`${trade.entryTime}-${index}`}><td><span className={`direction-tag ${trade.direction.toLowerCase()}`}>{trade.direction}</span></td><td>{new Date(trade.entryTime).toLocaleString()}</td><td>{new Date(trade.exitTime).toLocaleString()}</td><td>{trade.entryPrice.toFixed(5)}</td><td>{trade.exitPrice.toFixed(5)}</td><td className={trade.netPnl >= 0 ? "pnl-positive" : "pnl-negative"}>{trade.netPnl >= 0 ? "+" : "−"}{money(Math.abs(trade.netPnl))}</td><td>{trade.exitReason}</td></tr>)}</tbody></table></div> : <p className="backtest-empty">No trades met the strategy and higher-timeframe confirmation rules during this historical sample.</p>}
           <p className="backtest-table-note">Showing up to 100 most recent trades. The simulation assumes stop-loss is hit first when stop and target are both touched in the same candle.</p>
@@ -142,4 +146,26 @@ export default function BacktestPage() {
 
 function Metric({ label, value, detail, positive, negative }: { label: string; value: string; detail: string; positive?: boolean; negative?: boolean }) {
   return <div className="backtest-metric"><div className="backtest-metric-label">{label}</div><div className={`backtest-metric-value ${positive ? "positive" : ""} ${negative ? "negative" : ""}`}>{value}</div><div className="backtest-metric-detail">{detail}</div></div>;
+}
+
+function ValidationPanel({ validation }: { validation: OutOfSampleValidation }) {
+  return <section className="backtest-card backtest-validation-panel">
+    <div className="backtest-section-title"><h2>Out-of-sample validation</h2><span>{validation.inSamplePercent}% in-sample · {validation.outOfSamplePercent}% holdout</span></div>
+    {validation.status !== "completed" || !validation.inSample || !validation.outOfSample ? <div className="backtest-validation-insufficient"><ShieldAlert size={17} /><span>Not enough historical data to create a reliable split. Choose a wider date range or use an instrument/timeframe with more available history.</span></div> : <>
+      <p className="backtest-validation-intro">The holdout period follows the in-sample period chronologically and is scored separately. Do not tune the strategy using these holdout results if you want to preserve an independent evaluation.</p>
+      <div className="backtest-table-wrap"><table className="backtest-table backtest-validation-table"><thead><tr><th>Measure</th><th>In-sample</th><th>Out-of-sample holdout</th><th>Buy-and-hold benchmark*</th><th>No-trade baseline</th></tr></thead><tbody>
+        <tr><td>Period</td><td>{new Date(validation.inSample.startTime).toLocaleString()} – {new Date(validation.inSample.endTime).toLocaleString()}</td><td>{new Date(validation.outOfSample.startTime).toLocaleString()} – {new Date(validation.outOfSample.endTime).toLocaleString()}</td><td>{new Date(validation.outOfSample.startTime).toLocaleString()} – {new Date(validation.outOfSample.endTime).toLocaleString()}</td><td>{new Date(validation.outOfSample.startTime).toLocaleString()} – {new Date(validation.outOfSample.endTime).toLocaleString()}</td></tr>
+        <tr><td>Scored candles</td><td>{validation.inSample.candles.toLocaleString()}</td><td>{validation.outOfSample.candles.toLocaleString()}</td><td>{validation.outOfSample.candles.toLocaleString()}</td><td>{validation.outOfSample.candles.toLocaleString()}</td></tr>
+        <tr><td>Net P/L</td><td>{money(validation.inSample.netPnl)}</td><td>{money(validation.outOfSample.netPnl)}</td><td>{validation.benchmark ? money(validation.benchmark.netPnl) : "—"}</td><td>{validation.noTradeBaseline ? money(validation.noTradeBaseline.netPnl) : "—"}</td></tr>
+        <tr><td>Return</td><td>{percent(validation.inSample.returnPercent)}</td><td>{percent(validation.outOfSample.returnPercent)}</td><td>{validation.benchmark ? percent(validation.benchmark.returnPercent) : "—"}</td><td>{validation.noTradeBaseline ? percent(validation.noTradeBaseline.returnPercent) : "—"}</td></tr>
+        <tr><td>Trade count</td><td>{validation.inSample.trades}</td><td>{validation.outOfSample.trades}</td><td>—</td><td>—</td></tr>
+        <tr><td>Win rate</td><td>{percent(validation.inSample.winRatePercent)}</td><td>{percent(validation.outOfSample.winRatePercent)}</td><td>—</td><td>—</td></tr>
+        <tr><td>Profit factor</td><td>{validation.inSample.profitFactor === null ? "∞*" : validation.inSample.profitFactor.toFixed(2)}</td><td>{validation.outOfSample.profitFactor === null ? "∞*" : validation.outOfSample.profitFactor.toFixed(2)}</td><td>—</td><td>—</td></tr>
+        <tr><td>Expectancy (R)</td><td>{validation.inSample.expectancyR.toFixed(2)}R</td><td>{validation.outOfSample.expectancyR.toFixed(2)}R</td><td>—</td><td>—</td></tr>
+        <tr><td>Maximum drawdown</td><td>{percent(validation.inSample.maxDrawdownPercent)}</td><td>{percent(validation.outOfSample.maxDrawdownPercent)}</td><td>—</td><td>—</td></tr>
+      </tbody></table></div>
+      <p className="backtest-table-note">* Buy-and-hold is a long-only price-return reference. It excludes spread, fees, funding, dividends and instrument-specific contract sizing, so it is not a perfectly matched strategy comparison.</p>
+    </>}
+    <ul className="backtest-validation-warnings">{validation.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul>
+  </section>;
 }

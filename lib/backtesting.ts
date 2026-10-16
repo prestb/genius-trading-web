@@ -1,7 +1,7 @@
 import { calculateIndicators, type IndicatorCandle } from "./indicators";
 import { getRequiredHigherTimeframes } from "./multi-timeframe";
 
-export const BACKTEST_ENGINE_VERSION = "1.0.0" as const;
+export const BACKTEST_ENGINE_VERSION = "1.1.0" as const;
 
 export type BacktestInterval = "1min" | "5min" | "15min" | "30min" | "1h" | "4h" | "1day";
 export type BacktestDirection = "BUY" | "SELL";
@@ -26,6 +26,10 @@ export type BacktestInput = {
   startDate?: string;
   /** Inclusive UTC calendar date, e.g. 2025-03-31. */
   endDate?: string;
+  /** Inclusive UTC candle-open timestamp used for precise validation splits. */
+  testStartTime?: string;
+  /** Inclusive UTC candle-open timestamp used for precise validation splits. */
+  testEndTime?: string;
 };
 
 export type BacktestTrade = {
@@ -243,7 +247,7 @@ function emptyResult(input: BacktestInput, config: BacktestConfig, warning: stri
     symbol: input.symbol,
     interval: input.interval,
     status: "insufficient-data",
-    period: { startDate: input.startDate ?? null, endDate: input.endDate ?? null, firstCandleAt: null, lastCandleAt: null, candlesInRange: 0 },
+    period: { startDate: input.startDate ?? input.testStartTime ?? null, endDate: input.endDate ?? input.testEndTime ?? null, firstCandleAt: null, lastCandleAt: null, candlesInRange: 0 },
     warnings: [warning],
     config,
     summary: {
@@ -266,6 +270,17 @@ export function runBacktest(input: BacktestInput): BacktestResult {
   }
   if (!Number.isInteger(config.maxCandlesInTrade) || config.maxCandlesInTrade < 1 || config.maxCandlesInTrade > 10000) throw new Error("maxCandlesInTrade must be an integer between 1 and 10000.");
   if (!validateChronologicalCandles(input.candles)) throw new Error("Candles must be valid OHLC data in strictly increasing chronological order.");
+  if ((input.testStartTime !== undefined || input.testEndTime !== undefined) && (input.startDate !== undefined || input.endDate !== undefined)) {
+    throw new Error("Use either calendar date bounds or precise test timestamps, not both.");
+  }
+  const validTimestamp = (value: string | undefined) => value === undefined ||
+    (Number.isFinite(Date.parse(value)) && new Date(Date.parse(value)).toISOString() === value);
+  if (!validTimestamp(input.testStartTime) || !validTimestamp(input.testEndTime)) {
+    throw new Error("testStartTime and testEndTime must be valid canonical ISO timestamps.");
+  }
+  if (input.testStartTime && input.testEndTime && Date.parse(input.testStartTime) > Date.parse(input.testEndTime)) {
+    throw new Error("testStartTime must be on or before testEndTime.");
+  }
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
   for (const [name, value] of [["startDate", input.startDate], ["endDate", input.endDate]] as const) {
     if (value !== undefined && (!datePattern.test(value) || !Number.isFinite(Date.parse(`${value}T00:00:00.000Z`)) || new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) !== value)) {
@@ -273,21 +288,24 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     }
   }
   if (input.startDate && input.endDate && input.startDate > input.endDate) throw new Error("startDate must be on or before endDate.");
-  const rangeStart = input.startDate ? Date.parse(`${input.startDate}T00:00:00.000Z`) : Date.parse(input.candles[0]?.time ?? "");
+  const rangeStart = input.testStartTime ? Date.parse(input.testStartTime) : input.startDate ? Date.parse(`${input.startDate}T00:00:00.000Z`) : Date.parse(input.candles[0]?.time ?? "");
   const rangeEndExclusive = input.endDate ? Date.parse(`${input.endDate}T00:00:00.000Z`) + 86_400_000 : Number.POSITIVE_INFINITY;
-  const rangeStartIndex = input.candles.findIndex((candle) => Date.parse(candle.time) >= rangeStart && Date.parse(candle.time) < rangeEndExclusive);
+  const rangeEndInclusive = input.testEndTime ? Date.parse(input.testEndTime) : Number.POSITIVE_INFINITY;
+  const isInRange = (time: number) => time >= rangeStart && time < rangeEndExclusive && time <= rangeEndInclusive;
+  const rangeStartIndex = input.candles.findIndex((candle) => isInRange(Date.parse(candle.time)));
   let rangeEndIndex = -1;
   for (let index = input.candles.length - 1; index >= 0; index--) {
     const time = Date.parse(input.candles[index]!.time);
-    if (time >= rangeStart && time < rangeEndExclusive) { rangeEndIndex = index; break; }
+    if (isInRange(time)) { rangeEndIndex = index; break; }
   }
   const candlesInRange = rangeStartIndex >= 0 && rangeEndIndex >= rangeStartIndex ? rangeEndIndex - rangeStartIndex + 1 : 0;
-  if (input.candles.length < MIN_CANDLES + 1 || candlesInRange < 1 || (Boolean(input.startDate) && rangeStartIndex < MIN_CANDLES)) {
+  if (input.candles.length < MIN_CANDLES + 1 || candlesInRange < 1 || ((Boolean(input.startDate) || Boolean(input.testStartTime)) && rangeStartIndex < MIN_CANDLES)) {
     return emptyResult(input, config, `Insufficient history for the selected period. At least ${MIN_CANDLES} warm-up candles before the first test candle and one in-range candle are required.`);
   }
 
   const warnings = [
     "Signals are evaluated at candle close and filled at the next candle open; future candles are never used for a signal.",
+    "Open positions are closed within the selected test window and are never carried into candles outside the scored period.",
     "If stop-loss and take-profit are both touched within one candle, the stop-loss is assumed to occur first (conservative handling).",
     "Higher-timeframe candles are eligible only after their timestamp plus interval duration; incomplete higher-timeframe candles are excluded.",
     "Position size uses ATR stop distance; spread, slippage, and fees can make realized losses exceed the configured risk percentage.",
@@ -316,7 +334,7 @@ export function runBacktest(input: BacktestInput): BacktestResult {
       if (rawExit === null && i - position.entryIndex + 1 >= config.maxCandlesInTrade) {
         rawExit = candle.close;
         reason = "max-hold";
-      } else if (rawExit === null && i === input.candles.length - 1) {
+      } else if (rawExit === null && i === rangeEndIndex) {
         rawExit = candle.close;
         reason = "end-of-data";
       }
@@ -393,8 +411,8 @@ export function runBacktest(input: BacktestInput): BacktestResult {
     interval: input.interval,
     status: "completed",
     period: {
-      startDate: input.startDate ?? null,
-      endDate: input.endDate ?? null,
+      startDate: input.startDate ?? input.testStartTime ?? null,
+      endDate: input.endDate ?? input.testEndTime ?? null,
       firstCandleAt: input.candles[rangeStartIndex]?.time ?? null,
       lastCandleAt: input.candles[rangeEndIndex]?.time ?? null,
       candlesInRange,
@@ -417,7 +435,7 @@ export function runBacktest(input: BacktestInput): BacktestResult {
       maxDrawdownPercent,
       averageWin,
       averageLoss,
-      exposurePercent: input.candles.length ? Math.min(100, barsExposed / input.candles.length * 100) : 0,
+      exposurePercent: candlesInRange ? Math.min(100, barsExposed / candlesInRange * 100) : 0,
     },
     trades,
     equityCurve,
