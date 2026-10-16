@@ -103,10 +103,10 @@ export function createValidationPlan(
 
   const dateStart = options.startDate ? Date.parse(`${options.startDate}T00:00:00.000Z`) : null;
   const dateEndExclusive = options.endDate ? Date.parse(`${options.endDate}T00:00:00.000Z`) + 86_400_000 : null;
-  let testStartIndex = options.startDate
+  const testStartIndex = options.startDate
     ? candles.findIndex((candle) => timestamp(candle) >= dateStart!)
     : warmupCandles;
-  let testEndIndex = options.endDate
+  const testEndIndex = options.endDate
     ? candles.findLastIndex((candle) => timestamp(candle) < dateEndExclusive!)
     : candles.length - 1;
 
