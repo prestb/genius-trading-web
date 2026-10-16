@@ -182,6 +182,12 @@ The buy-and-hold reference does not fully match a leveraged or short-capable str
 
 **Preserve the holdout.** Do not tune rules or settings after inspecting holdout results and then continue to call the same period an independent test. If holdout results influence a strategy change, reserve a later, untouched period for fresh validation.
 
+## Experiment tracking and reproducibility
+
+The Backtesting Lab can save a browser-local experiment snapshot with a unique run ID. Each snapshot records the backtest engine version, instrument, timeframe, execution configuration, requested dates, actual candle window, candle counts, validation availability, and headline results. Saved snapshots can be exported as JSON and up to 25 recent records are retained in that browser.
+
+These records make it easier to compare research runs and document the assumptions behind a result. They are not a full replay archive: raw historical candles are not copied, so provider corrections, availability changes, or a changed implementation can produce different results when the same configuration is run again. Export important JSON snapshots for your records; browser storage is not synced across devices and can be cleared by the user.
+
 ## Robustness analysis
 
 The robustness module (`lib/robustness-analysis.ts`) adds two research views to the Backtesting Lab.
@@ -234,7 +240,7 @@ The classification is descriptive and heuristic. It is not an official market-st
 - [x] Historical backtesting with configurable modeled costs.
 - [x] UTC date-range filtering and execution safeguards.
 - [x] Chronological out-of-sample validation and basic benchmark reporting.
-- [ ] Complete verification and merge of the robustness-analysis feature branch.
+- [x] Robustness analysis with transaction-cost sensitivity and heuristic regime breakdown.\n- [x] Trade audit CSV export for all simulated trades.\n- [x] Browser-local experiment snapshots with unique run IDs, settings, data-window metadata, and JSON export.\n- [ ] Add deterministic dataset snapshots or provider-data fingerprints for stronger replay reproducibility.
 - [ ] Add further property tests for no-look-ahead behavior, fills, and cost assumptions.
 - [ ] Add richer robustness studies and independent forward/paper testing.
 - [ ] Review persistence, user preferences, deployment, observability, and release hardening.

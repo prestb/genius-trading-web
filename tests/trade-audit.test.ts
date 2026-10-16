@@ -32,7 +32,7 @@ const metadata = {
 describe("trade audit CSV", () => {
   it("exports all audit fields and metadata", () => {
     const csv = tradesToAuditCsv([trade], metadata);
-    expect(csv.split("\\r\\n")).toHaveLength(2);
+    expect(csv.split("\r\n")).toHaveLength(2);
     expect(csv).toContain("symbol,interval,engineVersion");
     expect(csv).toContain('EUR/USD,"15min",1.1.0');
     expect(csv).toContain("take-profit");
@@ -40,8 +40,8 @@ describe("trade audit CSV", () => {
   });
 
   it("escapes commas, quotes, and newlines in values", () => {
-    const csv = tradesToAuditCsv([trade], { ...metadata, symbol: 'EUR, "USD"\\nspot' });
-    expect(csv).toContain('"EUR, ""USD""\\nspot"');
+    const csv = tradesToAuditCsv([trade], { ...metadata, symbol: 'EUR, "USD"\nspot' });
+    expect(csv).toContain('"EUR, ""USD""\nspot"');
   });
 
   it("exports every trade rather than truncating the list", () => {
@@ -49,12 +49,12 @@ describe("trade audit CSV", () => {
       ...trade,
       signalTime: new Date(Date.parse(trade.signalTime) + index * 60_000).toISOString(),
     }));
-    expect(tradesToAuditCsv(trades, metadata).split("\\r\\n")).toHaveLength(126);
+    expect(tradesToAuditCsv(trades, metadata).split("\r\n")).toHaveLength(126);
   });
 
   it("exports a header for an empty trade list", () => {
     const csv = tradesToAuditCsv([], metadata);
-    expect(csv.split("\\r\\n")).toHaveLength(1);
+    expect(csv.split("\r\n")).toHaveLength(1);
     expect(csv).toContain("exitReason");
   });
 });

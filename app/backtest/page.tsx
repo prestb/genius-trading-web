@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, FlaskConical, Play, ShieldAlert } from "lucide-react";
 import {
   CartesianGrid,
@@ -16,6 +16,13 @@ import type { BacktestConfig, BacktestInterval, BacktestResult } from "@/lib/bac
 import type { OutOfSampleValidation } from "@/lib/backtest-validation";
 import type { RobustnessAnalysis } from "@/lib/robustness-analysis";
 import { tradesToAuditCsv } from "@/lib/trade-audit";
+import {
+  addExperiment,
+  createExperimentSnapshot,
+  EXPERIMENT_STORAGE_KEY,
+  exportExperimentJson,
+  type ExperimentSnapshot,
+} from "@/lib/experiment-tracking";
 
 const intervals: { label: string; value: BacktestInterval }[] = [
   { label: "1 minute", value: "1min" },
@@ -45,6 +52,40 @@ export default function BacktestPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<(BacktestResult & { validation?: OutOfSampleValidation; robustness?: RobustnessAnalysis }) | null>(null);
+  const [currentRunId, setCurrentRunId] = useState("");
+  const [experiments, setExperiments] = useState<ExperimentSnapshot[]>([]);
+  const [experimentsLoaded, setExperimentsLoaded] = useState(false);
+  const [experimentMessage, setExperimentMessage] = useState("");
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(EXPERIMENT_STORAGE_KEY);
+      if (stored) {
+        const parsed: unknown = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          setExperiments(parsed.filter((item): item is ExperimentSnapshot =>
+            Boolean(item) && typeof item === "object" &&
+            typeof item.id === "string" && typeof item.savedAt === "string" &&
+            typeof item.symbol === "string" && typeof item.engineVersion === "string" &&
+            item.schemaVersion === 1 && Boolean(item.config) && Boolean(item.summary)
+          ).slice(0, 25));
+        }
+      }
+    } catch {
+      setExperimentMessage("Saved experiments could not be read from this browser.");
+    } finally {
+      setExperimentsLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!experimentsLoaded) return;
+    try {
+      window.localStorage.setItem(EXPERIMENT_STORAGE_KEY, JSON.stringify(experiments));
+    } catch {
+      setExperimentMessage("Browser storage is unavailable; export experiment JSON to keep a backup.");
+    }
+  }, [experiments, experimentsLoaded]);
 
   const equityData = useMemo(() => {
     if (!result?.equityCurve.length) return [];
@@ -90,6 +131,23 @@ export default function BacktestPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function saveExperiment() {
+    if (!result || !currentRunId) return;
+    const snapshot = createExperimentSnapshot(result, currentRunId, new Date().toISOString());
+    setExperiments((current) => addExperiment(current, snapshot));
+    setExperimentMessage(`Saved experiment ${currentRunId.slice(0, 8)}. Up to 25 recent experiments are kept in this browser.`);
+  }
+
+  function downloadExperiment(experiment: ExperimentSnapshot) {
+    const blob = new Blob([exportExperimentJson(experiment)], { type: "application/json;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `genius-trading-experiment-${experiment.id.slice(0, 8)}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   function exportTradeAudit() {
@@ -143,6 +201,26 @@ export default function BacktestPage() {
       {error && <div className="backtest-error" role="alert"><ShieldAlert size={17} /><span>{error}</span></div>}
       {result && <>
         <section className="backtest-results-head"><div><div className="backtest-eyebrow">RESULTS · {result.symbol} · {result.interval}</div><p className="backtest-period-detail">Test candles: {result.period.firstCandleAt ? new Date(result.period.firstCandleAt).toLocaleString() : "—"} to {result.period.lastCandleAt ? new Date(result.period.lastCandleAt).toLocaleString() : "—"} · {result.period.candlesInRange} candles in range</p><h2>{result.status === "completed" ? "Simulation complete" : "Insufficient history"}</h2></div><span className={`backtest-result-pill ${result.summary.netPnl >= 0 ? "positive" : "negative"}`}>{percent(result.summary.returnPercent)} return</span></section>
+        <section className="backtest-card">
+          <div className="backtest-section-title"><h2>Experiment record</h2><span>Configuration snapshot · Local to this browser</span></div>
+          <p className="backtest-period-detail">Run ID: <code>{currentRunId || "—"}</code>. The snapshot records the engine version, all execution settings, requested and actual data windows, validation status, and headline metrics.</p>
+          <div className="backtest-audit-actions">
+            <button type="button" className="backtest-run-button" onClick={saveExperiment} disabled={!currentRunId}>Save experiment snapshot</button>
+            <span>Saved records stay in this browser and are limited to the 25 most recent. Export JSON to back them up.</span>
+          </div>
+          {experimentMessage && <p className="backtest-table-note" role="status">{experimentMessage}</p>}
+        </section>
+        {experiments.length > 0 && <section className="backtest-card">
+          <div className="backtest-section-title"><h2>Saved experiments</h2><span>{experiments.length} saved · newest first</span></div>
+          <div className="backtest-table-wrap"><table className="backtest-table">
+            <thead><tr><th>Saved</th><th>Run ID</th><th>Instrument</th><th>Timeframe</th><th>Engine</th><th>Trades</th><th>Return</th><th>Net P/L</th><th>Max drawdown</th><th>Actions</th></tr></thead>
+            <tbody>{experiments.map((experiment) => <tr key={experiment.id}>
+              <td>{new Date(experiment.savedAt).toLocaleString()}</td><td><code>{experiment.id.slice(0, 8)}</code></td><td>{experiment.symbol}</td><td>{experiment.interval}</td><td>{experiment.engineVersion}</td><td>{experiment.summary.trades}</td><td>{percent(experiment.summary.returnPercent)}</td><td className={experiment.summary.netPnl >= 0 ? "pnl-positive" : "pnl-negative"}>{money(experiment.summary.netPnl)}</td><td>{percent(experiment.summary.maxDrawdownPercent)}</td><td><button type="button" className="backtest-run-button" onClick={() => downloadExperiment(experiment)}>Export JSON</button></td>
+            </tr>)}</tbody>
+          </table></div>
+          <p className="backtest-table-note">These are configuration and summary snapshots, not copies of the underlying historical candles. Provider data can change, so an identical configuration may not reproduce identical results later.</p>
+          <div className="backtest-audit-actions"><button type="button" className="backtest-run-button" onClick={() => { setExperiments([]); setExperimentMessage("Saved experiment history cleared from this browser."); }}>Clear saved experiments</button><span>Clearing is local to this browser and cannot be undone unless you exported backups.</span></div>
+        </section>}
         <section className="backtest-metrics">
           <Metric label="Net P/L" value={`${result.summary.netPnl >= 0 ? "+" : "−"}${money(Math.abs(result.summary.netPnl))}`} detail={`${money(result.summary.finalBalance)} final balance`} positive={result.summary.netPnl >= 0} />
           <Metric label="Win rate" value={percent(result.summary.winRatePercent)} detail={`${result.summary.wins} wins · ${result.summary.losses} losses`} />
