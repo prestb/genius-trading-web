@@ -17,7 +17,7 @@ const COLUMNS = [
 
 function csvCell(value: string | number): string {
   const text = String(value);
-  return /[",\\r\\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 /** Serializes every trade, not only the dashboard's visible 100-row preview. */
@@ -49,5 +49,5 @@ export function tradesToAuditCsv(trades: BacktestTrade[], metadata: TradeAuditMe
     };
     return COLUMNS.map((column) => csvCell(row[column])).join(",");
   });
-  return [header, ...rows].join("\\r\\n");
+  return [header, ...rows].join("\r\n");
 }
